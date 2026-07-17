@@ -6,7 +6,7 @@ import { useAuth } from "../contexts/AuthContext";
 import EmojiPicker from "../components/EmojiPicker";
 import { MEMBER_COLORS, PARENT_ROLES, genderFromRole } from "../lib/types";
 import { toast } from "sonner";
-import type { Invite, Family } from "../lib/types";
+import type { Invite } from "../lib/types";
 
 type Step = "loading" | "invalid" | "account" | "profile" | "joining" | "done";
 
@@ -17,7 +17,8 @@ export default function InvitePage() {
 
   const [step, setStep] = useState<Step>("loading");
   const [invite, setInvite] = useState<Invite | null>(null);
-  const [family, setFamily] = useState<Family | null>(null);
+  // family name stored separately because the families(*) join is RLS-blocked for non-members
+  const [familyName, setFamilyName] = useState<string>("your family");
 
   // Account fields
   const [email, setEmail] = useState("");
@@ -45,7 +46,7 @@ export default function InvitePage() {
 
     const { data } = await supabase
       .from("invites")
-      .select("*, families(*)")
+      .select("*, families(name)")
       .eq("token", token)
       .single();
 
@@ -59,8 +60,12 @@ export default function InvitePage() {
     }
 
     setInvite(data as Invite);
-    setFamily((data as unknown as { families: Family }).families);
+    // families join may be null due to RLS — use it when available, fallback otherwise
+    const resolvedName = (data as unknown as { families: { name: string } | null }).families?.name;
+    if (resolvedName) setFamilyName(resolvedName);
     if (data.email) setEmail(data.email);
+    // Pre-fill the nickname from whatever name was entered when sending the invite
+    if (data.name) setNickname(data.name);
 
     // If already signed in, check if already in this family
     if (user) {
@@ -105,30 +110,31 @@ export default function InvitePage() {
   }
 
   async function joinFamily() {
-    if (!invite || !family || !nickname.trim()) {
-      toast.error("Please enter a nickname");
-      return;
-    }
+    if (!invite) { toast.error("Invite not loaded — please refresh"); return; }
+    if (!nickname.trim()) { toast.error("Please enter a nickname"); return; }
     setSaving(true);
     try {
       const { data: { user: currentUser } } = await supabase.auth.getUser();
       if (!currentUser) throw new Error("Not signed in");
 
+      const familyId = invite.family_id;
+
       // Count existing members for colour assignment
       const { data: existingMembers } = await supabase
         .from("family_members")
         .select("id")
-        .eq("family_id", family.id);
+        .eq("family_id", familyId);
       const color = MEMBER_COLORS[(existingMembers?.length ?? 0) % MEMBER_COLORS.length];
 
       const { error: memberError } = await supabase.from("family_members").insert({
-        family_id: family.id,
+        family_id: familyId,
         user_id: currentUser.id,
         role,
         nickname: nickname.trim(),
         avatar_emoji: avatar,
         is_child: false,
         color,
+        gender: genderFromRole(role) || null,
       });
       if (memberError) throw memberError;
 
@@ -181,7 +187,7 @@ export default function InvitePage() {
     return (
       <div className="min-h-screen bg-background flex flex-col items-center justify-center px-5 text-center gap-4">
         <span className="text-5xl">🎉</span>
-        <h1 className="font-display text-2xl font-bold">Welcome to {family?.name}!</h1>
+        <h1 className="font-display text-2xl font-bold">Welcome to {familyName}!</h1>
         <p className="text-muted-foreground">Taking you to the family dashboard...</p>
       </div>
     );
@@ -196,11 +202,11 @@ export default function InvitePage() {
           <div className="text-center mb-8">
             <div className="text-5xl mb-4">📚</div>
             <h1 className="font-display text-3xl font-bold text-foreground">
-              {step === "account" ? "Create your account" : `Join ${family?.name}`}
+              {step === "account" ? "Create your account" : `Join ${familyName}`}
             </h1>
             <p className="text-muted-foreground mt-2 text-sm">
               {step === "account"
-                ? `You've been invited to join ${family?.name} on Bookie`
+                ? `You've been invited to join ${familyName} on Bookie`
                 : "Set up your reading profile"}
             </p>
           </div>
@@ -279,7 +285,7 @@ export default function InvitePage() {
               <div className="bg-secondary rounded-xl px-4 py-3 flex items-center gap-3 border border-border">
                 <span className="text-2xl">🎉</span>
                 <p className="text-sm font-semibold text-foreground">
-                  You're joining <strong>{family?.name}</strong>
+                  You're joining <strong>{familyName}</strong>
                 </p>
               </div>
 
@@ -325,7 +331,7 @@ export default function InvitePage() {
                 disabled={saving || !nickname.trim()}
                 className="w-full py-3.5 rounded-xl bg-primary text-primary-foreground font-bold text-base hover:opacity-90 disabled:opacity-60 shadow-md shadow-primary/25 flex items-center justify-center gap-2"
               >
-                {saving ? "Joining..." : <>Join {family?.name} <ArrowRight size={18} /></>}
+                {saving ? "Joining..." : <>Join {familyName} <ArrowRight size={18} /></>}
               </button>
             </div>
           )}
