@@ -33,6 +33,7 @@ export default function InvitePage() {
   useEffect(() => {
     async function loadInvite() {
       if (!token) { setInvalid(true); setLoading(false); return; }
+      // Support both 6-digit codes and old long hex tokens
       const { data } = await supabase
         .from("invites")
         .select("*, families(*)")

@@ -87,6 +87,15 @@ export const CHILD_ROLES = [
   "Son", "Daughter", "Brother", "Sister", "Grandson", "Granddaughter", "Other",
 ];
 
+const MASCULINE_ROLES = new Set(["Dad", "Grandpa", "Uncle", "Son", "Brother", "Grandson"]);
+const FEMININE_ROLES = new Set(["Mom", "Grandma", "Aunt", "Daughter", "Sister", "Granddaughter"]);
+
+export function genderFromRole(role: string): string {
+  if (MASCULINE_ROLES.has(role)) return "Male";
+  if (FEMININE_ROLES.has(role)) return "Female";
+  return "";
+}
+
 export type ReadingStatus = "want_to_read" | "reading" | "finished";
 
 export const STATUS_LABELS: Record<ReadingStatus, string> = {

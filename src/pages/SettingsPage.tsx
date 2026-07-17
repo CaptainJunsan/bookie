@@ -4,7 +4,7 @@ import { LogOut, Plus, Trash2, Copy, Check, MessageCircle, UserPlus } from "luci
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../contexts/AuthContext";
 import EmojiPicker from "../components/EmojiPicker";
-import { MEMBER_COLORS, CHILD_ROLES, PARENT_ROLES } from "../lib/types";
+import { MEMBER_COLORS, CHILD_ROLES, PARENT_ROLES, genderFromRole } from "../lib/types";
 import type { Invite, FamilyMember } from "../lib/types";
 import { toast } from "sonner";
 
@@ -91,11 +91,42 @@ export default function SettingsPage() {
     toast.success("Profile removed");
   }
 
+  async function cancelInvite(inviteId: string) {
+    await supabase.from("invites").delete().eq("id", inviteId);
+    await loadInvites();
+    toast.success("Invite cancelled");
+  }
+
+  function generate6DigitCode(): string {
+    return Math.floor(100000 + Math.random() * 900000).toString();
+  }
+
+  function getInviteUrl(token: string) {
+    return `${window.location.origin}/auth?invite=${token}`;
+  }
+
+  function buildInviteMessage(invite: Invite) {
+    const url = getInviteUrl(invite.token);
+    return [
+      `Hi ${invite.name || "there"}, you've been invited to join ${family?.name} on Bookie! 📚`,
+      ``,
+      `Here's your 6-digit invite code: *${invite.token}*`,
+      `Just follow the link to join the family!`,
+      `(You can also manually enter it from the login page)`,
+      ``,
+      url,
+      ``,
+      `See you there :)`,
+    ].join("\n");
+  }
+
   async function sendInvite() {
     if (!inviteName.trim() || !family || !member) return;
     if (!inviteEmail && !invitePhone) { toast.error("Enter an email or phone number"); return; }
     setSendingInvite(true);
-    const { data, error } = await supabase
+    const token = generate6DigitCode();
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    const { error } = await supabase
       .from("invites")
       .insert({
         family_id: family.id,
@@ -103,19 +134,14 @@ export default function SettingsPage() {
         name: inviteName.trim(),
         email: inviteEmail || null,
         phone: invitePhone || null,
-      })
-      .select()
-      .single();
+        token,
+        expires_at: expiresAt,
+      });
     if (error) { toast.error("Failed to create invite"); setSendingInvite(false); return; }
     await loadInvites();
     setInviteName(""); setInviteEmail(""); setInvitePhone(""); setShowInvite(false);
-    toast.success("Invite created! Share the link below.");
+    toast.success("Invite created! Share the link or code below.");
     setSendingInvite(false);
-    void data;
-  }
-
-  function getInviteUrl(token: string) {
-    return `${window.location.origin}/invite/${token}`;
   }
 
   async function copyInviteLink(token: string) {
@@ -124,10 +150,14 @@ export default function SettingsPage() {
     setTimeout(() => setCopiedToken(null), 2000);
   }
 
+  async function copyInviteMessage(invite: Invite) {
+    await navigator.clipboard.writeText(buildInviteMessage(invite));
+    setCopiedToken(invite.token + "_msg");
+    setTimeout(() => setCopiedToken(null), 2000);
+  }
+
   function shareViaWhatsApp(invite: Invite) {
-    const url = getInviteUrl(invite.token);
-    const msg = `Hi ${invite.name}! 👋\n\nI'd like you to join our family reading library on Bookie. Click the link to get started:\n\n${url}\n\n📚 Let's read together!`;
-    window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, "_blank");
+    window.open(`https://wa.me/?text=${encodeURIComponent(buildInviteMessage(invite))}`, "_blank");
   }
 
   async function handleSignOut() {
@@ -202,15 +232,22 @@ export default function SettingsPage() {
             <input value={childUsername} onChange={(e) => setChildUsername(e.target.value)} placeholder="Username" className="w-full px-3 py-2 rounded-xl bg-input-background border border-border text-sm outline-none focus:ring-2 focus:ring-ring" />
             <div className="flex gap-2 flex-wrap">
               {CHILD_ROLES.map((r) => (
-                <button key={r} onClick={() => setChildRole(r)} className={`px-2.5 py-1 rounded-lg text-xs font-semibold border transition-colors ${childRole === r ? "bg-primary text-primary-foreground border-primary" : "bg-card border-border"}`}>{r}</button>
+                <button key={r}
+                  onClick={() => { setChildRole(r); const g = genderFromRole(r); if (g) setChildGender(g); }}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold border transition-colors ${childRole === r ? "bg-primary text-primary-foreground border-primary" : "bg-card border-border"}`}>
+                  {r}
+                </button>
               ))}
             </div>
-            <select value={childGender} onChange={(e) => setChildGender(e.target.value)} className="w-full px-3 py-2 rounded-xl bg-input-background border border-border text-sm outline-none">
-              <option value="">Gender (optional)</option>
-              <option value="Boy">Boy</option>
-              <option value="Girl">Girl</option>
-              <option value="Non-binary">Non-binary</option>
-            </select>
+            <div className="flex gap-2">
+              {["Male", "Female"].map((g) => (
+                <button key={g} type="button"
+                  onClick={() => setChildGender(childGender === g ? "" : g)}
+                  className={`flex-1 py-2 rounded-xl text-sm font-semibold border transition-colors ${childGender === g ? "bg-primary text-primary-foreground border-primary" : "bg-muted border-transparent text-muted-foreground"}`}>
+                  {g === "Male" ? "♂ Male" : "♀ Female"}
+                </button>
+              ))}
+            </div>
             <EmojiPicker value={childAvatar} onChange={setChildAvatar} />
             <div className="flex gap-2">
               <button onClick={addChild} disabled={savingChild} className="flex-1 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-bold">{savingChild ? "Adding..." : "Add child"}</button>
@@ -229,8 +266,8 @@ export default function SettingsPage() {
         <h2 className="font-display font-bold text-lg flex items-center gap-2"><UserPlus size={18} /> Invite family members</h2>
 
         {invites.map((inv) => {
-          const url = getInviteUrl(inv.token);
-          const isCopied = copiedToken === inv.token;
+          const isCopiedLink = copiedToken === inv.token;
+          const isCopiedMsg = copiedToken === inv.token + "_msg";
           return (
             <div key={inv.id} className="bg-secondary rounded-xl p-3 space-y-2">
               <div className="flex items-center justify-between">
@@ -238,12 +275,28 @@ export default function SettingsPage() {
                   <p className="text-sm font-bold">{inv.name}</p>
                   <p className="text-xs text-muted-foreground">{inv.email || inv.phone}</p>
                 </div>
-                <span className="text-xs text-muted-foreground">Pending</span>
+                <div className="flex items-center gap-2">
+                  <div className="text-right">
+                    <p className="font-mono font-bold text-lg text-primary tracking-widest">{inv.token}</p>
+                    <p className="text-[10px] text-muted-foreground">6-digit · 24h</p>
+                  </div>
+                  <button
+                    onClick={() => cancelInvite(inv.id)}
+                    className="w-7 h-7 rounded-lg bg-destructive/10 text-destructive flex items-center justify-center hover:bg-destructive/20 transition-colors"
+                    title="Cancel invite"
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </div>
               </div>
               <div className="flex gap-2">
                 <button onClick={() => copyInviteLink(inv.token)} className="flex-1 py-2 rounded-lg bg-card border border-border text-xs font-semibold flex items-center justify-center gap-1 hover:border-primary transition-colors">
-                  {isCopied ? <Check size={13} className="text-primary" /> : <Copy size={13} />}
-                  {isCopied ? "Copied!" : "Copy link"}
+                  {isCopiedLink ? <Check size={13} className="text-primary" /> : <Copy size={13} />}
+                  {isCopiedLink ? "Copied!" : "Copy link"}
+                </button>
+                <button onClick={() => copyInviteMessage(inv)} className="flex-1 py-2 rounded-lg bg-card border border-border text-xs font-semibold flex items-center justify-center gap-1 hover:border-primary transition-colors">
+                  {isCopiedMsg ? <Check size={13} className="text-primary" /> : <Copy size={13} />}
+                  {isCopiedMsg ? "Copied!" : "Copy message"}
                 </button>
                 <button onClick={() => shareViaWhatsApp(inv)} className="flex-1 py-2 rounded-lg bg-[#25D366] text-white text-xs font-semibold flex items-center justify-center gap-1">
                   <MessageCircle size={13} /> WhatsApp

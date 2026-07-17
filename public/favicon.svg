@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- Cream background with rounded corners -->
+  <rect width="64" height="64" rx="14" fill="#F0E4CB"/>
+  <!-- Capital B, Fraunces-style serif weight, forest green, tilted -15deg around centre -->
+  <text
+    x="34"
+    y="47"
+    text-anchor="middle"
+    font-family="Georgia, 'Times New Roman', serif"
+    font-weight="bold"
+    font-size="46"
+    fill="#3B6E52"
+    transform="rotate(-15, 34, 34)"
+  >B</text>
+</svg>

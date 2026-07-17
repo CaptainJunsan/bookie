@@ -4,7 +4,7 @@ import { Plus, Trash2, Send, ArrowRight, ArrowLeft, Check } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../contexts/AuthContext";
 import EmojiPicker from "../components/EmojiPicker";
-import { MEMBER_COLORS, PARENT_ROLES, CHILD_ROLES } from "../lib/types";
+import { MEMBER_COLORS, PARENT_ROLES, CHILD_ROLES, genderFromRole } from "../lib/types";
 import { toast } from "sonner";
 
 interface ChildProfile {
@@ -111,14 +111,17 @@ export default function OnboardingPage() {
         await supabase.from("family_members").insert(childInserts);
       }
 
-      // 4. Create invites
+      // 4. Create invites with 6-digit codes and 24h expiry
       if (invites.length > 0) {
+        const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
         const inviteInserts = invites.map((inv) => ({
           family_id: familyId,
           invited_by: parentMember.id,
           name: inv.name,
           email: inv.email || null,
           phone: inv.phone || null,
+          token: Math.floor(100000 + Math.random() * 900000).toString(),
+          expires_at: expiresAt,
         }));
         await supabase.from("invites").insert(inviteInserts);
       }
@@ -261,22 +264,21 @@ export default function OnboardingPage() {
                       />
                       <div className="flex gap-2 flex-wrap">
                         {CHILD_ROLES.map((r) => (
-                          <button key={r} onClick={() => setNewChild((p) => ({ ...p, role: r }))}
+                          <button key={r} onClick={() => setNewChild((p) => ({ ...p, role: r, gender: genderFromRole(r) || p.gender }))}
                             className={`px-2.5 py-1 rounded-lg text-xs font-semibold border transition-colors ${newChild.role === r ? "bg-primary text-primary-foreground border-primary" : "bg-muted border-border"}`}>
                             {r}
                           </button>
                         ))}
                       </div>
-                      <select
-                        value={newChild.gender}
-                        onChange={(e) => setNewChild((p) => ({ ...p, gender: e.target.value }))}
-                        className="w-full px-3 py-2.5 rounded-xl bg-input-background border border-border outline-none focus:ring-2 focus:ring-ring text-sm"
-                      >
-                        <option value="">Gender (optional)</option>
-                        <option value="Boy">Boy</option>
-                        <option value="Girl">Girl</option>
-                        <option value="Non-binary">Non-binary</option>
-                      </select>
+                      <div className="flex gap-2">
+                        {["Male", "Female"].map((g) => (
+                          <button key={g} type="button"
+                            onClick={() => setNewChild((p) => ({ ...p, gender: p.gender === g ? "" : g }))}
+                            className={`flex-1 py-2 rounded-xl text-sm font-semibold border transition-colors ${newChild.gender === g ? "bg-primary text-primary-foreground border-primary" : "bg-muted border-transparent text-muted-foreground"}`}>
+                            {g === "Male" ? "♂ Male" : "♀ Female"}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   </div>
                   <div>

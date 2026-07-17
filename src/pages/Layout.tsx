@@ -1,5 +1,5 @@
 import { Outlet, NavLink, useLocation, useNavigate } from "react-router";
-import { BookOpen, LayoutDashboard, PlusCircle, Settings, BookMarked } from "lucide-react";
+import { BookMarked, LayoutDashboard, PlusCircle, Settings } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import { cn } from "../app/components/ui/utils";
 
@@ -8,7 +8,11 @@ export default function Layout() {
   const location = useLocation();
   const navigate = useNavigate();
 
-  const isAppRoute = user && family && !["/", "/auth", "/onboarding"].includes(location.pathname) && !location.pathname.startsWith("/invite");
+  const isAppRoute =
+    user &&
+    family &&
+    !["/", "/auth", "/onboarding"].includes(location.pathname) &&
+    !location.pathname.startsWith("/invite");
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -38,20 +42,16 @@ export default function Layout() {
       </main>
 
       {isAppRoute && (
-        <nav className="sticky bottom-0 z-40 bg-card border-t border-border safe-bottom">
-          <div className="max-w-2xl mx-auto px-2 h-16 flex items-center justify-around">
+        <nav className="sticky bottom-0 z-40 bg-card border-t border-border">
+          <div className="max-w-2xl mx-auto px-4 h-16 flex items-center justify-around">
             <NavItem to="/dashboard" icon={<LayoutDashboard size={20} />} label="Home" />
-            <NavItem to="/books" icon={<BookMarked size={20} />} label="Books" />
-            <NavLink
-              to="/books/add"
-              className="flex flex-col items-center gap-0.5 px-3"
-            >
+            <NavItem to="/books" icon={<BookMarked size={20} />} label="Library" />
+            <NavLink to="/books/add" className="flex flex-col items-center gap-0.5">
               <span className="w-12 h-12 -mt-6 rounded-full bg-primary flex items-center justify-center text-primary-foreground shadow-lg shadow-primary/30">
                 <PlusCircle size={22} />
               </span>
               <span className="text-[10px] font-semibold text-muted-foreground mt-0.5">Add</span>
             </NavLink>
-            <NavItem to="/books?view=reading" icon={<BookOpen size={20} />} label="Reading" />
             <NavItem to="/settings" icon={<Settings size={20} />} label="Settings" />
           </div>
         </nav>
@@ -62,13 +62,13 @@ export default function Layout() {
 
 function NavItem({ to, icon, label }: { to: string; icon: React.ReactNode; label: string }) {
   const location = useLocation();
-  const isActive = location.pathname === to.split("?")[0] && !to.includes("/books/add");
+  const isActive = location.pathname === to;
 
   return (
     <NavLink
       to={to}
       className={cn(
-        "flex flex-col items-center gap-0.5 px-3 py-1 rounded-xl transition-colors min-w-[52px]",
+        "flex flex-col items-center gap-0.5 px-4 py-1 rounded-xl transition-colors min-w-[56px]",
         isActive ? "text-primary" : "text-muted-foreground hover:text-foreground"
       )}
     >
