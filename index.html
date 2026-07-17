@@ -5,9 +5,21 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Bookie — Family Reading Tracker</title>
     <meta name="description" content="Track every book your family reads together." />
+
+    <!-- Standard favicon (SVG for modern browsers) -->
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!-- PNG fallback for browsers that don't support SVG favicons -->
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+
+    <!-- iOS / Safari: required for bookmarks, home screen icon, and tab previews.
+         Must be a PNG — Safari ignores SVG for apple-touch-icon entirely.
+         180x180 covers all current iPhone and iPad retina sizes. -->
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+
+    <!-- PWA / Safari web app metadata -->
     <meta name="theme-color" content="#F0E4CB" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="Bookie" />
   </head>
   <body>
