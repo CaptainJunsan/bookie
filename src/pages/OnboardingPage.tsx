@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router";
-import { Plus, Trash2, Send, ArrowRight, ArrowLeft, Check } from "lucide-react";
+import { Plus, Trash2, Send, ArrowRight, ArrowLeft, Check, LogOut } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../contexts/AuthContext";
 import EmojiPicker from "../components/EmojiPicker";
@@ -24,9 +24,10 @@ const STEPS = ["Your profile", "Family name", "Add children", "Invite family"];
 
 export default function OnboardingPage() {
   const navigate = useNavigate();
-  const { user, refreshFamily } = useAuth();
+  const { user, refreshFamily, signOut } = useAuth();
   const [step, setStep] = useState(0);
   const [saving, setSaving] = useState(false);
+  const [confirmLogout, setConfirmLogout] = useState(false);
 
   // Step 0: profile
   const [nickname, setNickname] = useState("");
@@ -140,10 +141,36 @@ export default function OnboardingPage() {
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <div className="max-w-lg mx-auto w-full px-5 py-8 flex-1 flex flex-col">
-        {/* Logo */}
-        <div className="flex items-center gap-2 mb-8">
-          <span className="text-2xl">📚</span>
-          <span className="font-display font-bold text-xl text-primary">Bookie</span>
+        {/* Top bar */}
+        <div className="flex items-center justify-between mb-8">
+          <div className="flex items-center gap-2">
+            <span className="text-2xl">📚</span>
+            <span className="font-display font-bold text-xl text-primary">Bookie</span>
+          </div>
+          {confirmLogout ? (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">Lose progress?</span>
+              <button
+                onClick={async () => { await signOut(); navigate("/"); }}
+                className="px-3 py-1.5 rounded-lg bg-destructive text-destructive-foreground text-xs font-bold hover:opacity-90"
+              >
+                Yes, log out
+              </button>
+              <button
+                onClick={() => setConfirmLogout(false)}
+                className="px-3 py-1.5 rounded-lg bg-muted text-muted-foreground text-xs font-semibold"
+              >
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setConfirmLogout(true)}
+              className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <LogOut size={14} /> Log out
+            </button>
+          )}
         </div>
 
         {/* Progress */}
