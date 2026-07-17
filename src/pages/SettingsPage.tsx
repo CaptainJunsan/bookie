@@ -47,6 +47,7 @@ export default function SettingsPage() {
       .select("*")
       .eq("family_id", family.id)
       .is("accepted_at", null)
+      .gt("expires_at", new Date().toISOString())
       .order("created_at", { ascending: false });
     setInvites((data as Invite[]) || []);
   }
@@ -92,8 +93,14 @@ export default function SettingsPage() {
   }
 
   async function cancelInvite(inviteId: string) {
-    await supabase.from("invites").delete().eq("id", inviteId);
-    await loadInvites();
+    // Expire the invite (sets it in the past) — works with existing UPDATE RLS policy.
+    // A DELETE policy would need a SQL migration; expiring is equivalent for UX.
+    const { error } = await supabase
+      .from("invites")
+      .update({ expires_at: new Date(0).toISOString() })
+      .eq("id", inviteId);
+    if (error) { toast.error("Could not cancel invite"); return; }
+    setInvites((prev) => prev.filter((i) => i.id !== inviteId));
     toast.success("Invite cancelled");
   }
 
