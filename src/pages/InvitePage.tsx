@@ -140,7 +140,7 @@ export default function InvitePage() {
 
       await supabase
         .from("invites")
-        .update({ accepted_at: new Date().toISOString() })
+        .delete()
         .eq("token", token!);
 
       setStep("joining");
