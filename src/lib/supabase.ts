@@ -27,7 +27,14 @@ export function getPublicUrl(path: string): string {
 export async function fetchBookByIsbn(isbn: string) {
   const cleaned = isbn.replace(/[^0-9X]/gi, "");
 
+  let title: string | undefined;
+  let author: string | undefined;
+  let pageCount: number | undefined;
+  let coverUrl: string | null = null;
+
   // ── 1. Open Library Books API ───────────────────────────────────────────
+  // Use ID-based cover URLs only — the ISBN-direct URL (covers.openlibrary.org/b/isbn/…-L.jpg)
+  // returns a 1×1 transparent placeholder for missing covers, which looks blank in the UI.
   try {
     const res = await fetch(
       `https://openlibrary.org/api/books?bibkeys=ISBN:${cleaned}&format=json&jscmd=data`
@@ -35,44 +42,45 @@ export async function fetchBookByIsbn(isbn: string) {
     const data = await res.json();
     const book = data[`ISBN:${cleaned}`];
     if (book?.title) {
-      // Open Library cover API is more reliable than the cover field in the Books response
-      const olCover = `https://covers.openlibrary.org/b/isbn/${cleaned}-L.jpg`;
-      const cover = book.cover?.large || book.cover?.medium || book.cover?.small || olCover;
-      return {
-        title: book.title as string,
-        author: (book.authors?.[0]?.name as string) ?? undefined,
-        cover_url: cover,
-        page_count: (book.number_of_pages as number) ?? undefined,
-      };
+      title = book.title as string;
+      author = (book.authors?.[0]?.name as string) ?? undefined;
+      pageCount = (book.number_of_pages as number) ?? undefined;
+      // ID-based URLs are reliable; don't fall back to the ISBN direct URL
+      const olCover = book.cover?.large || book.cover?.medium || book.cover?.small;
+      if (olCover) coverUrl = olCover as string;
     }
   } catch { /* fall through */ }
 
-  // ── 2. Google Books API fallback ────────────────────────────────────────
-  try {
-    const res = await fetch(
-      `https://www.googleapis.com/books/v1/volumes?q=isbn:${cleaned}&maxResults=1`
-    );
-    const data = await res.json();
-    const info = data.items?.[0]?.volumeInfo;
-    if (info?.title) {
-      const thumb = info.imageLinks?.extraLarge ||
-        info.imageLinks?.large ||
-        info.imageLinks?.thumbnail ||
-        info.imageLinks?.smallThumbnail;
-      // Google returns http:// urls — upgrade to https and request larger size
-      const cover = thumb
-        ? thumb.replace("http://", "https://").replace("&zoom=1", "&zoom=0")
-        : null;
-      return {
-        title: info.title as string,
-        author: (info.authors?.[0] as string) ?? undefined,
-        cover_url: cover,
-        page_count: (info.pageCount as number) ?? undefined,
-      };
-    }
-  } catch { /* fall through */ }
+  // ── 2. Google Books API ─────────────────────────────────────────────────
+  // Used as cover fallback when OL has no cover, and as full fallback when OL doesn't know the ISBN.
+  if (!title || !coverUrl) {
+    try {
+      const res = await fetch(
+        `https://www.googleapis.com/books/v1/volumes?q=isbn:${cleaned}&maxResults=1`
+      );
+      const data = await res.json();
+      const info = data.items?.[0]?.volumeInfo;
+      if (info?.title) {
+        if (!title) {
+          title = info.title as string;
+          author = (info.authors?.[0] as string) ?? undefined;
+          pageCount = (info.pageCount as number) ?? undefined;
+        }
+        if (!coverUrl) {
+          const thumb =
+            info.imageLinks?.extraLarge ||
+            info.imageLinks?.large ||
+            info.imageLinks?.thumbnail ||
+            info.imageLinks?.smallThumbnail;
+          // Upgrade to https — don't modify zoom as zoom=0 isn't universally available
+          if (thumb) coverUrl = (thumb as string).replace("http://", "https://");
+        }
+      }
+    } catch { /* fall through */ }
+  }
 
-  return null;
+  if (!title) return null;
+  return { title, author, cover_url: coverUrl, page_count: pageCount };
 }
 
 /** @deprecated use fetchBookByIsbn */

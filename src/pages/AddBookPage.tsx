@@ -113,6 +113,12 @@ export default function AddBookPage() {
     setCoverUrl("");
   }
 
+  function clearCover() {
+    setCoverUrl("");
+    setCoverPreview("");
+    setCoverFile(null);
+  }
+
   async function save() {
     if (!title.trim()) { toast.error("Please enter a book title"); return; }
     if (!family || !member) return;
@@ -122,6 +128,7 @@ export default function AddBookPage() {
       let coverStoragePath: string | null = null;
 
       if (coverFile) {
+        // User-selected local file
         const ext = coverFile.name.split(".").pop();
         const path = `${family.id}/${Date.now()}.${ext}`;
         const { error: uploadErr } = await supabase.storage.from("book-covers").upload(path, coverFile);
@@ -130,6 +137,23 @@ export default function AddBookPage() {
           const { data } = supabase.storage.from("book-covers").getPublicUrl(path);
           finalCoverUrl = data.publicUrl;
         }
+      } else if (coverUrl) {
+        // Remote cover fetched from Open Library / Google Books — download and re-upload
+        // so it's served from our own storage and doesn't depend on external URLs staying live.
+        try {
+          const imgRes = await fetch(coverUrl);
+          if (imgRes.ok) {
+            const blob = await imgRes.blob();
+            const ext = blob.type.includes("png") ? "png" : "jpg";
+            const path = `${family.id}/${Date.now()}.${ext}`;
+            const { error: uploadErr } = await supabase.storage.from("book-covers").upload(path, blob, { contentType: blob.type });
+            if (!uploadErr) {
+              coverStoragePath = path;
+              const { data } = supabase.storage.from("book-covers").getPublicUrl(path);
+              finalCoverUrl = data.publicUrl;
+            }
+          }
+        } catch { /* keep remote URL if download fails */ }
       }
 
       const { data: book, error } = await supabase
@@ -242,21 +266,71 @@ export default function AddBookPage() {
         <div className="flex gap-4">
           {/* Cover */}
           <div className="flex-shrink-0">
-            <div
-              onClick={() => fileInputRef.current?.click()}
-              className="w-24 h-36 rounded-xl bg-secondary border border-border overflow-hidden flex items-center justify-center relative group cursor-pointer hover:opacity-90 transition-opacity"
-            >
-              {coverPreview ? (
-                <img src={coverPreview} alt="Cover" className="w-full h-full object-cover" />
-              ) : (
-                <div className="flex flex-col items-center gap-1 text-muted-foreground">
-                  <BookOpen size={24} />
-                  <span className="text-[10px] font-medium text-center px-1">Tap to add cover</span>
-                </div>
-              )}
-              <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white">
-                <Upload size={18} />
+            <div className="relative w-24 h-36">
+              <div
+                onClick={() => fileInputRef.current?.click()}
+                className="w-full h-full rounded-xl bg-secondary border border-border overflow-hidden flex items-center justify-center relative group cursor-pointer hover:opacity-90 transition-opacity"
+              >
+                {coverPreview ? (
+                  <img
+                    src={coverPreview}
+                    alt="Cover"
+                    className="w-full h-full object-cover"
+                    onError={() => {
+                      // Remote cover URL returned a bad/blank image — clear it so user can upload manually
+                      setCoverPreview("");
+                      setCoverUrl("");
+                      toast.error("Cover image couldn't load — you can upload one manually.");
+                    }}
+                  />
+                ) : (
+                  <div className="flex flex-col items-center gap-1 text-muted-foreground p-1">
+                    <BookOpen size={22} />
+                    <span className="text-[10px] font-medium text-center leading-tight">Tap to add cover</span>
+                  </div>
+                )}
+                {coverPreview && (
+                  <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white">
+                    <Upload size={18} />
+                  </div>
+                )}
               </div>
+              {/* Clear button */}
+              {coverPreview && (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); clearCover(); }}
+                  className="absolute -top-2 -right-2 w-5 h-5 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center shadow-sm hover:opacity-90 transition-opacity z-10"
+                  title="Remove cover"
+                >
+                  <X size={11} />
+                </button>
+              )}
+            </div>
+            {/* Camera/upload options below cover */}
+            <div className="flex gap-1 mt-1.5 w-24">
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="flex-1 py-1 rounded-lg bg-muted text-muted-foreground text-[10px] font-medium hover:text-foreground transition-colors flex items-center justify-center gap-0.5"
+                title="Upload from library"
+              >
+                <Upload size={10} />
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (fileInputRef.current) {
+                    fileInputRef.current.removeAttribute("capture");
+                    fileInputRef.current.setAttribute("capture", "environment");
+                    fileInputRef.current.click();
+                  }
+                }}
+                className="flex-1 py-1 rounded-lg bg-muted text-muted-foreground text-[10px] font-medium hover:text-foreground transition-colors flex items-center justify-center gap-0.5"
+                title="Take photo"
+              >
+                <Camera size={10} />
+              </button>
             </div>
             <input ref={fileInputRef} type="file" accept="image/*" onChange={handleCoverFile} className="hidden" />
           </div>
@@ -298,12 +372,6 @@ export default function AddBookPage() {
           />
           <p className="text-xs text-muted-foreground mt-1">Used to show reading progress as a percentage.</p>
         </div>
-
-        {coverUrl && !coverFile && (
-          <div className="flex items-center gap-2 text-xs text-muted-foreground bg-secondary rounded-xl px-3 py-2">
-            <span>✅</span> Cover fetched automatically
-          </div>
-        )}
 
         <button
           onClick={save}
