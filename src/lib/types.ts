@@ -13,6 +13,7 @@ export interface FamilyMember {
   nickname: string;
   avatar_emoji: string;
   is_child: boolean;
+  is_child_mode: boolean;
   color: string;
   gender: string | null;
   created_at: string;
@@ -22,6 +23,7 @@ export interface Invite {
   id: string;
   family_id: string;
   invited_by: string | null;
+  member_id: string | null;
   name: string | null;
   email: string | null;
   phone: string | null;

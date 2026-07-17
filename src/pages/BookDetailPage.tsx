@@ -24,7 +24,7 @@ export default function BookDetailPage() {
   const [loading, setLoading] = useState(true);
   const [updatingMember, setUpdatingMember] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"progress" | "ratings">("progress");
-  const [myPage, setMyPage] = useState("");
+  const [pageInputs, setPageInputs] = useState<Record<string, string>>({});
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   useEffect(() => {
@@ -49,8 +49,9 @@ export default function BookDetailPage() {
 
     setData({ book: bookRes.data as Book, progressByMember, ratingByMember });
 
-    const myProgress = progressByMember[member?.id ?? ""];
-    if (myProgress) setMyPage(String(myProgress.current_page));
+    const inputs: Record<string, string> = {};
+    Object.entries(progressByMember).forEach(([mid, prog]) => { inputs[mid] = String(prog.current_page); });
+    setPageInputs(inputs);
 
     setLoading(false);
   }
@@ -76,12 +77,20 @@ export default function BookDetailPage() {
   }
 
   async function updatePageForMember(memberId: string) {
-    const pg = parseInt(myPage);
+    const pg = parseInt(pageInputs[memberId] ?? "");
     if (isNaN(pg) || pg < 0) { toast.error("Invalid page number"); return; }
     const status = data?.progressByMember[memberId]?.status ?? "reading";
     const finalStatus = data?.book.page_count && pg >= data.book.page_count ? "finished" : status === "want_to_read" ? "reading" : status;
     await updateProgress(memberId, finalStatus as ReadingStatus, pg);
     toast.success("Progress updated!");
+  }
+
+  // Parents can edit progress for any child member; children only edit their own (unless child_mode off)
+  function canEdit(m: FamilyMember) {
+    if (!member) return false;
+    if (m.id === member.id) return true;
+    if (member.is_child) return false; // children can't edit others
+    return m.is_child; // parents can update any child's progress
   }
 
   async function updateRating(memberId: string, field: "parent_rating" | "reader_rating" | "review", value: number | string | null) {
@@ -170,6 +179,7 @@ export default function BookDetailPage() {
               const prog = progressByMember[m.id];
               const pct = book.page_count && prog ? Math.min(100, Math.round((prog.current_page / book.page_count) * 100)) : null;
               const isMe = m.id === member?.id;
+              const editable = canEdit(m);
               const isUpdating = updatingMember === m.id;
 
               return (
@@ -177,7 +187,10 @@ export default function BookDetailPage() {
                   <div className="flex items-center gap-3 mb-3">
                     <span className="text-2xl">{m.avatar_emoji}</span>
                     <div className="flex-1">
-                      <p className="font-semibold text-sm">{m.nickname} {isMe && <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full font-bold ml-1">you</span>}</p>
+                      <p className="font-semibold text-sm">
+                        {m.nickname}
+                        {isMe && <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full font-bold ml-1">you</span>}
+                      </p>
                       <p className="text-xs text-muted-foreground capitalize">{prog ? STATUS_LABELS[prog.status] : "Not started"}</p>
                     </div>
                     {pct !== null && prog?.status !== "finished" && (
@@ -192,7 +205,7 @@ export default function BookDetailPage() {
                     </div>
                   )}
 
-                  {isMe && (
+                  {editable && (
                     <>
                       <div className="flex gap-2 mb-3 flex-wrap">
                         {(["want_to_read", "reading", "finished"] as ReadingStatus[]).map((s) => (
@@ -210,8 +223,8 @@ export default function BookDetailPage() {
                         <div className="flex gap-2">
                           <input
                             type="number"
-                            value={myPage}
-                            onChange={(e) => setMyPage(e.target.value)}
+                            value={pageInputs[m.id] ?? ""}
+                            onChange={(e) => setPageInputs((prev) => ({ ...prev, [m.id]: e.target.value }))}
                             placeholder="Current page"
                             min="0"
                             max={book.page_count ?? undefined}

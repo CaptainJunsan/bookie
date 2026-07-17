@@ -17,6 +17,7 @@ export default function InvitePage() {
 
   const [step, setStep] = useState<Step>("loading");
   const [invite, setInvite] = useState<Invite | null>(null);
+  const [isChildClaim, setIsChildClaim] = useState(false); // invite targets an existing child member
   // family name stored separately because the families(*) join is RLS-blocked for non-members
   const [familyName, setFamilyName] = useState<string>("your family");
 
@@ -66,6 +67,8 @@ export default function InvitePage() {
     if (data.email) setEmail(data.email);
     // Pre-fill the nickname from whatever name was entered when sending the invite
     if (data.name) setNickname(data.name);
+    // Detect child-claim invites (those pointing to an existing child member)
+    if (data.member_id) setIsChildClaim(true);
 
     // If already signed in, check if already in this family
     if (user) {
@@ -117,31 +120,39 @@ export default function InvitePage() {
       const { data: { user: currentUser } } = await supabase.auth.getUser();
       if (!currentUser) throw new Error("Not signed in");
 
-      const familyId = invite.family_id;
+      if (isChildClaim) {
+        // Child claiming their pre-created profile — use SECURITY DEFINER RPC to link user_id.
+        // Also update nickname/avatar if the child personalised them.
+        const { error: rpcError } = await supabase.rpc("claim_child_member", { p_token: token! });
+        if (rpcError) throw rpcError;
+        // Update personalised nickname/avatar if changed
+        if (invite.member_id) {
+          await supabase.from("family_members").update({
+            nickname: nickname.trim(),
+            avatar_emoji: avatar,
+          }).eq("id", invite.member_id);
+        }
+      } else {
+        // Regular new-member join
+        const familyId = invite.family_id;
+        const { data: existingMembers } = await supabase
+          .from("family_members").select("id").eq("family_id", familyId);
+        const color = MEMBER_COLORS[(existingMembers?.length ?? 0) % MEMBER_COLORS.length];
 
-      // Count existing members for colour assignment
-      const { data: existingMembers } = await supabase
-        .from("family_members")
-        .select("id")
-        .eq("family_id", familyId);
-      const color = MEMBER_COLORS[(existingMembers?.length ?? 0) % MEMBER_COLORS.length];
+        const { error: memberError } = await supabase.from("family_members").insert({
+          family_id: familyId,
+          user_id: currentUser.id,
+          role,
+          nickname: nickname.trim(),
+          avatar_emoji: avatar,
+          is_child: false,
+          color,
+          gender: genderFromRole(role) || null,
+        });
+        if (memberError) throw memberError;
 
-      const { error: memberError } = await supabase.from("family_members").insert({
-        family_id: familyId,
-        user_id: currentUser.id,
-        role,
-        nickname: nickname.trim(),
-        avatar_emoji: avatar,
-        is_child: false,
-        color,
-        gender: genderFromRole(role) || null,
-      });
-      if (memberError) throw memberError;
-
-      await supabase
-        .from("invites")
-        .delete()
-        .eq("token", token!);
+        await supabase.from("invites").delete().eq("token", token!);
+      }
 
       setStep("joining");
       await refreshFamily();
@@ -283,9 +294,12 @@ export default function InvitePage() {
           {step === "profile" && (
             <div className="space-y-5">
               <div className="bg-secondary rounded-xl px-4 py-3 flex items-center gap-3 border border-border">
-                <span className="text-2xl">🎉</span>
+                <span className="text-2xl">{isChildClaim ? "👋" : "🎉"}</span>
                 <p className="text-sm font-semibold text-foreground">
-                  You're joining <strong>{familyName}</strong>
+                  {isChildClaim
+                    ? <>Welcome, <strong>{nickname || "there"}</strong>! Make this profile your own.</>
+                    : <>You're joining <strong>{familyName}</strong></>
+                  }
                 </p>
               </div>
 
@@ -295,31 +309,34 @@ export default function InvitePage() {
                   type="text"
                   value={nickname}
                   onChange={(e) => setNickname(e.target.value)}
-                  placeholder="e.g. Dad, Gran, Aunt Lisa"
+                  placeholder="e.g. Lily, Max, Grandma"
                   className="w-full px-4 py-3 rounded-xl bg-input-background border border-border outline-none focus:ring-2 focus:ring-ring text-base"
                   autoFocus
                 />
               </div>
 
-              <div>
-                <label className="block text-sm font-semibold mb-2">Your role in the family</label>
-                <div className="flex flex-wrap gap-2">
-                  {PARENT_ROLES.map((r) => (
-                    <button
-                      key={r}
-                      type="button"
-                      onClick={() => setRole(r)}
-                      className={`px-3 py-1.5 rounded-xl text-sm font-semibold border transition-colors ${
-                        role === r
-                          ? "bg-primary text-primary-foreground border-primary"
-                          : "bg-card border-border text-foreground hover:border-primary/50"
-                      }`}
-                    >
-                      {r}
-                    </button>
-                  ))}
+              {/* Role selector only for new (non-child-claim) members */}
+              {!isChildClaim && (
+                <div>
+                  <label className="block text-sm font-semibold mb-2">Your role in the family</label>
+                  <div className="flex flex-wrap gap-2">
+                    {PARENT_ROLES.map((r) => (
+                      <button
+                        key={r}
+                        type="button"
+                        onClick={() => setRole(r)}
+                        className={`px-3 py-1.5 rounded-xl text-sm font-semibold border transition-colors ${
+                          role === r
+                            ? "bg-primary text-primary-foreground border-primary"
+                            : "bg-card border-border text-foreground hover:border-primary/50"
+                        }`}
+                      >
+                        {r}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
 
               <div>
                 <label className="block text-sm font-semibold mb-2">Choose your avatar</label>
