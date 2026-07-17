@@ -1,15 +1,15 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router";
-import { Camera, Search, ArrowLeft, Upload, Loader2, BookOpen } from "lucide-react";
-import { supabase, fetchOpenLibraryBook } from "../lib/supabase";
+import { Camera, Search, ArrowLeft, Upload, Loader2, BookOpen, X } from "lucide-react";
+import { supabase, fetchBookByIsbn } from "../lib/supabase";
 import { useAuth } from "../contexts/AuthContext";
 import { toast } from "sonner";
+import type { IScannerControls } from "@zxing/browser";
 
 export default function AddBookPage() {
   const navigate = useNavigate();
   const { family, member } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const isbnInputRef = useRef<HTMLInputElement>(null);
 
   const [isbn, setIsbn] = useState("");
   const [title, setTitle] = useState("");
@@ -21,13 +21,72 @@ export default function AddBookPage() {
   const [fetchingIsbn, setFetchingIsbn] = useState(false);
   const [saving, setSaving] = useState(false);
   const [scannerActive, setScannerActive] = useState(false);
+
   const videoRef = useRef<HTMLVideoElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
+  const controlsRef = useRef<IScannerControls | null>(null);
+
+  // Start ZXing once the video element is in the DOM
+  useEffect(() => {
+    if (!scannerActive) return;
+    let cancelled = false;
+
+    async function initZxing() {
+      // Wait one frame for the video element to mount
+      await new Promise((r) => requestAnimationFrame(r));
+      if (cancelled || !videoRef.current) return;
+
+      try {
+        const { BrowserMultiFormatReader } = await import("@zxing/browser");
+        const reader = new BrowserMultiFormatReader();
+        const controls = await reader.decodeFromConstraints(
+          { video: { facingMode: "environment", width: { ideal: 1920 } } },
+          videoRef.current,
+          async (result, err) => {
+            if (!result) return;
+            const code = result.getText();
+            controls.stop();
+            setScannerActive(false);
+            await handleBarcode(code);
+          }
+        );
+        if (!cancelled) controlsRef.current = controls;
+        else controls.stop();
+      } catch {
+        if (!cancelled) {
+          toast.error("Camera access denied. Enter the ISBN manually.");
+          setScannerActive(false);
+        }
+      }
+    }
+
+    initZxing();
+    return () => {
+      cancelled = true;
+      controlsRef.current?.stop();
+      controlsRef.current = null;
+    };
+  }, [scannerActive]);
+
+  async function handleBarcode(code: string) {
+    setIsbn(code);
+    setFetchingIsbn(true);
+    const data = await fetchBookByIsbn(code);
+    if (data) {
+      if (data.title) setTitle(data.title);
+      if (data.author) setAuthor(data.author);
+      if (data.page_count) setPageCount(String(data.page_count));
+      if (data.cover_url) { setCoverUrl(data.cover_url); setCoverPreview(data.cover_url); }
+      toast.success("Book found!");
+    } else {
+      toast.error("Book not found — please fill in the details manually.");
+    }
+    setFetchingIsbn(false);
+  }
 
   async function fetchByIsbn() {
     if (!isbn.trim()) return;
     setFetchingIsbn(true);
-    const data = await fetchOpenLibraryBook(isbn.trim());
+    const data = await fetchBookByIsbn(isbn.trim());
     if (data) {
       if (data.title) setTitle(data.title);
       if (data.author) setAuthor(data.author);
@@ -40,55 +99,9 @@ export default function AddBookPage() {
     setFetchingIsbn(false);
   }
 
-  async function startScanner() {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-      streamRef.current = stream;
-      setScannerActive(true);
-      setTimeout(() => {
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          videoRef.current.play();
-        }
-      }, 100);
-
-      // @ts-ignore - BarcodeDetector is experimental
-      if ("BarcodeDetector" in window) {
-        // @ts-ignore
-        const detector = new BarcodeDetector({ formats: ["ean_13", "ean_8", "isbn"] });
-        const interval = setInterval(async () => {
-          if (!videoRef.current) return;
-          try {
-            const barcodes = await detector.detect(videoRef.current);
-            if (barcodes.length > 0) {
-              const code = barcodes[0].rawValue;
-              setIsbn(code);
-              stopScanner();
-              clearInterval(interval);
-              // Auto-fetch
-              setFetchingIsbn(true);
-              const data = await fetchOpenLibraryBook(code);
-              if (data) {
-                if (data.title) setTitle(data.title);
-                if (data.author) setAuthor(data.author);
-                if (data.page_count) setPageCount(String(data.page_count));
-                if (data.cover_url) { setCoverUrl(data.cover_url); setCoverPreview(data.cover_url); }
-                toast.success("Book found from barcode!");
-              }
-              setFetchingIsbn(false);
-            }
-          } catch { /* continue */ }
-        }, 500);
-        setTimeout(() => clearInterval(interval), 30000);
-      }
-    } catch {
-      toast.error("Camera access denied. Please enter the ISBN manually.");
-    }
-  }
-
   function stopScanner() {
-    streamRef.current?.getTracks().forEach((t) => t.stop());
-    streamRef.current = null;
+    controlsRef.current?.stop();
+    controlsRef.current = null;
     setScannerActive(false);
   }
 
@@ -153,17 +166,17 @@ export default function AddBookPage() {
         <h1 className="font-display text-2xl font-bold">Add a book</h1>
       </div>
 
-      {/* ISBN Scanner */}
+      {/* ISBN + Scanner */}
       <div className="bg-card border border-border rounded-2xl p-4 mb-5">
         <h2 className="font-semibold text-sm mb-3 flex items-center gap-2"><Search size={15} /> Find by ISBN</h2>
         <div className="flex gap-2 mb-3">
           <input
-            ref={isbnInputRef}
             type="text"
             value={isbn}
             onChange={(e) => setIsbn(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && fetchByIsbn()}
-            placeholder="Enter ISBN number"
+            placeholder="Enter or scan ISBN"
+            inputMode="numeric"
             className="flex-1 px-3 py-2.5 rounded-xl bg-input-background border border-border outline-none focus:ring-2 focus:ring-ring text-sm"
           />
           <button
@@ -174,52 +187,84 @@ export default function AddBookPage() {
             {fetchingIsbn ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
           </button>
           <button
-            onClick={scannerActive ? stopScanner : startScanner}
-            className={`px-3 py-2.5 rounded-xl text-sm font-bold transition-colors ${scannerActive ? "bg-destructive text-destructive-foreground" : "bg-secondary text-secondary-foreground hover:bg-muted"}`}
+            onClick={scannerActive ? stopScanner : () => setScannerActive(true)}
+            className={`px-3 py-2.5 rounded-xl text-sm font-bold transition-colors ${
+              scannerActive
+                ? "bg-destructive text-destructive-foreground"
+                : "bg-secondary text-secondary-foreground hover:bg-muted"
+            }`}
+            title={scannerActive ? "Close scanner" : "Scan barcode"}
           >
-            <Camera size={16} />
+            {scannerActive ? <X size={16} /> : <Camera size={16} />}
           </button>
         </div>
 
         {scannerActive && (
-          <div className="relative rounded-xl overflow-hidden bg-black aspect-video mb-2">
-            <video ref={videoRef} className="w-full h-full object-cover" playsInline muted />
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="w-48 h-24 border-2 border-primary rounded-lg opacity-70" />
+          <div className="relative rounded-xl overflow-hidden bg-black aspect-video">
+            <video
+              ref={videoRef}
+              className="w-full h-full object-cover"
+              playsInline
+              muted
+              autoPlay
+            />
+            {/* Targeting guide */}
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+              <div className="relative w-56 h-28">
+                {/* Corner marks */}
+                {[
+                  "top-0 left-0 border-t-2 border-l-2 rounded-tl-md",
+                  "top-0 right-0 border-t-2 border-r-2 rounded-tr-md",
+                  "bottom-0 left-0 border-b-2 border-l-2 rounded-bl-md",
+                  "bottom-0 right-0 border-b-2 border-r-2 rounded-br-md",
+                ].map((cls, i) => (
+                  <div key={i} className={`absolute w-6 h-6 border-primary ${cls}`} />
+                ))}
+                {/* Scan line animation */}
+                <div className="absolute inset-x-0 top-1/2 h-0.5 bg-primary/70 animate-pulse" />
+              </div>
             </div>
-            <p className="absolute bottom-2 left-0 right-0 text-center text-xs text-white/80">Point at the ISBN barcode</p>
+            <p className="absolute bottom-3 left-0 right-0 text-center text-xs text-white/80 font-medium">
+              Point at the barcode on the back of the book
+            </p>
+          </div>
+        )}
+
+        {fetchingIsbn && (
+          <div className="flex items-center gap-2 mt-3 text-sm text-muted-foreground">
+            <Loader2 size={14} className="animate-spin" /> Looking up book...
           </div>
         )}
       </div>
 
-      {/* Book details form */}
+      {/* Book details */}
       <div className="space-y-4">
         <div className="flex gap-4">
           {/* Cover */}
           <div className="flex-shrink-0">
-            <div className="w-24 h-32 rounded-xl bg-secondary border border-border overflow-hidden flex items-center justify-center relative group">
+            <div
+              onClick={() => fileInputRef.current?.click()}
+              className="w-24 h-36 rounded-xl bg-secondary border border-border overflow-hidden flex items-center justify-center relative group cursor-pointer hover:opacity-90 transition-opacity"
+            >
               {coverPreview ? (
                 <img src={coverPreview} alt="Cover" className="w-full h-full object-cover" />
               ) : (
-                <BookOpen size={28} className="text-muted-foreground" />
+                <div className="flex flex-col items-center gap-1 text-muted-foreground">
+                  <BookOpen size={24} />
+                  <span className="text-[10px] font-medium text-center px-1">Tap to add cover</span>
+                </div>
               )}
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white"
-              >
+              <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white">
                 <Upload size={18} />
-              </button>
+              </div>
             </div>
-            <button onClick={() => fileInputRef.current?.click()} className="w-24 mt-1.5 text-[11px] text-center text-muted-foreground hover:text-primary transition-colors font-medium">
-              Upload cover
-            </button>
-            <input ref={fileInputRef} type="file" accept="image/*" capture="environment" onChange={handleCoverFile} className="hidden" />
+            <input ref={fileInputRef} type="file" accept="image/*" onChange={handleCoverFile} className="hidden" />
           </div>
 
           {/* Fields */}
           <div className="flex-1 space-y-3">
             <div>
-              <label className="block text-xs font-semibold mb-1 text-muted-foreground">Title *</label>
+              <label className="block text-xs font-semibold mb-1 text-muted-foreground uppercase tracking-wide">Title *</label>
               <input
                 type="text"
                 value={title}
@@ -229,7 +274,7 @@ export default function AddBookPage() {
               />
             </div>
             <div>
-              <label className="block text-xs font-semibold mb-1 text-muted-foreground">Author</label>
+              <label className="block text-xs font-semibold mb-1 text-muted-foreground uppercase tracking-wide">Author</label>
               <input
                 type="text"
                 value={author}
@@ -242,7 +287,7 @@ export default function AddBookPage() {
         </div>
 
         <div>
-          <label className="block text-xs font-semibold mb-1 text-muted-foreground">Page count</label>
+          <label className="block text-xs font-semibold mb-1 text-muted-foreground uppercase tracking-wide">Page count</label>
           <input
             type="number"
             value={pageCount}
@@ -251,12 +296,12 @@ export default function AddBookPage() {
             min="1"
             className="w-full px-3 py-2.5 rounded-xl bg-input-background border border-border outline-none focus:ring-2 focus:ring-ring text-sm"
           />
-          <p className="text-xs text-muted-foreground mt-1">Helpful for tracking reading progress as a percentage.</p>
+          <p className="text-xs text-muted-foreground mt-1">Used to show reading progress as a percentage.</p>
         </div>
 
         {coverUrl && !coverFile && (
           <div className="flex items-center gap-2 text-xs text-muted-foreground bg-secondary rounded-xl px-3 py-2">
-            <span>✅</span> Cover fetched from Open Library
+            <span>✅</span> Cover fetched automatically
           </div>
         )}
 
