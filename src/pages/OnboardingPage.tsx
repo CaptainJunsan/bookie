@@ -71,35 +71,35 @@ export default function OnboardingPage() {
     if (!user) return;
     setSaving(true);
     try {
-      // 1. Create family
-      const { data: family, error: fErr } = await supabase
+      // 1. Create family — generate UUID client-side to avoid RLS SELECT issue
+      const familyId = crypto.randomUUID();
+      const { error: fErr } = await supabase
         .from("families")
-        .insert({ name: familyName.trim(), created_by: user.id })
-        .select()
-        .single();
-      if (fErr || !family) throw fErr || new Error("Failed to create family");
+        .insert({ id: familyId, name: familyName.trim(), created_by: user.id });
+      if (fErr) throw fErr;
 
       // 2. Create parent member
       const parentColor = MEMBER_COLORS[0];
-      const { data: parentMember, error: mErr } = await supabase
+      const memberId = crypto.randomUUID();
+      const { error: mErr } = await supabase
         .from("family_members")
         .insert({
-          family_id: family.id,
+          id: memberId,
+          family_id: familyId,
           user_id: user.id,
           role,
           nickname: nickname.trim(),
           avatar_emoji: avatar,
           is_child: false,
           color: parentColor,
-        })
-        .select()
-        .single();
-      if (mErr || !parentMember) throw mErr || new Error("Failed to create member");
+        });
+      if (mErr) throw mErr;
+      const parentMember = { id: memberId };
 
       // 3. Create child profiles
       if (children.length > 0) {
         const childInserts = children.map((c, i) => ({
-          family_id: family.id,
+          family_id: familyId,
           user_id: null,
           role: c.role,
           nickname: c.username,
@@ -114,7 +114,7 @@ export default function OnboardingPage() {
       // 4. Create invites
       if (invites.length > 0) {
         const inviteInserts = invites.map((inv) => ({
-          family_id: family.id,
+          family_id: familyId,
           invited_by: parentMember.id,
           name: inv.name,
           email: inv.email || null,

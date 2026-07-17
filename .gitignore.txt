@@ -1,0 +1,22 @@
+# Sensitive Data
+.env
+.env.local
+*.pem
+*.key
+
+# Operating System Files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Package Manager Dependencies (Unnecessary to upload)
+node_modules/
+vendor/
+.venv/
+env/
+
+# IDE / Code Editor Settings
+.vscode/
+.idea/
+*.suo
+*.ntvs*
