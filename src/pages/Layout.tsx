@@ -42,8 +42,8 @@ export default function Layout() {
       </main>
 
       {isAppRoute && (
-        <nav className="sticky bottom-0 z-40 bg-card border-t border-border">
-          <div className="max-w-2xl mx-auto px-2 h-16 flex items-center justify-around">
+        <nav className="sticky bottom-0 z-40 bg-card border-t border-border pb-safe">
+          <div className="max-w-2xl mx-auto px-2 pt-2 pb-3 flex items-center justify-around">
             {/* Left side */}
             <NavItem to="/dashboard" icon={<LayoutDashboard size={20} />} label="Home" />
             <NavItem to="/books" icon={<BookMarked size={20} />} label="Library" />

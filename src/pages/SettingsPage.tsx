@@ -32,6 +32,7 @@ export default function SettingsPage() {
   const [sharingApp, setSharingApp] = useState(false);
 
   // Edit self
+  const [editingProfile, setEditingProfile] = useState(false);
   const [editNickname, setEditNickname] = useState(member?.nickname ?? "");
   const [editAvatar, setEditAvatar] = useState(member?.avatar_emoji ?? "📚");
   const [editRole, setEditRole] = useState(member?.role ?? "");
@@ -98,6 +99,7 @@ export default function SettingsPage() {
     await refreshFamily();
     toast.success("Profile updated!");
     setSavingProfile(false);
+    setEditingProfile(false);
   }
 
   function openEditChild(m: FamilyMember) {
@@ -285,41 +287,79 @@ export default function SettingsPage() {
       <h1 className="font-display text-2xl font-bold">Settings</h1>
 
       {/* My profile */}
-      <section className="bg-card border border-border rounded-2xl p-4 space-y-4">
-        <h2 className="font-display font-bold text-lg">My profile</h2>
-        <div className="flex items-center gap-3">
-          <span className="text-3xl">{editAvatar}</span>
-          <div>
-            <p className="font-bold">{member?.nickname}</p>
-            <p className="text-sm text-muted-foreground">{user?.email}</p>
+      <section className="bg-card border border-border rounded-2xl overflow-hidden">
+        {/* Collapsed view — always visible */}
+        <div className="flex items-center gap-3 p-4">
+          <div
+            className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl flex-shrink-0"
+            style={{ backgroundColor: (member?.color ?? "#3B6E52") + "22", border: `2px solid ${(member?.color ?? "#3B6E52")}40` }}
+          >
+            {member?.avatar_emoji}
           </div>
-        </div>
-        <div className="space-y-3">
-          <div>
-            <label className="block text-xs font-semibold mb-1 text-muted-foreground uppercase tracking-wide">Nickname</label>
-            <input value={editNickname} onChange={(e) => setEditNickname(e.target.value)}
-              className="w-full px-3 py-2.5 rounded-xl bg-input-background border border-border outline-none focus:ring-2 focus:ring-ring text-sm" />
+          <div className="flex-1 min-w-0">
+            <p className="font-bold leading-tight">{member?.nickname}</p>
+            <p className="text-xs text-muted-foreground truncate">{member?.role} · {user?.email}</p>
           </div>
-          <div>
-            <label className="block text-xs font-semibold mb-2 text-muted-foreground uppercase tracking-wide">Role</label>
-            <div className="flex flex-wrap gap-2">
-              {(member?.is_child ? CHILD_ROLES : PARENT_ROLES).map((r) => (
-                <button key={r} onClick={() => setEditRole(r)}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold border transition-colors ${editRole === r ? "bg-primary text-primary-foreground border-primary" : "bg-muted border-transparent"}`}>
-                  {r}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div>
-            <label className="block text-xs font-semibold mb-2 text-muted-foreground uppercase tracking-wide">Avatar</label>
-            <EmojiPicker value={editAvatar} onChange={setEditAvatar} />
-          </div>
-          <button onClick={saveProfile} disabled={savingProfile}
-            className="w-full py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-bold hover:opacity-90 disabled:opacity-60">
-            {savingProfile ? "Saving..." : "Save changes"}
+          <button
+            onClick={() => {
+              if (!editingProfile) {
+                setEditNickname(member?.nickname ?? "");
+                setEditAvatar(member?.avatar_emoji ?? "📚");
+                setEditRole(member?.role ?? "");
+              }
+              setEditingProfile((v) => !v);
+            }}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+              editingProfile
+                ? "bg-muted text-muted-foreground"
+                : "bg-secondary text-foreground hover:bg-muted"
+            }`}
+          >
+            {editingProfile ? <><X size={12} /> Cancel</> : <><Pencil size={12} /> Edit</>}
           </button>
         </div>
+
+        {/* Expanded edit form */}
+        {editingProfile && (
+          <div className="border-t border-border px-4 pb-4 pt-3 space-y-3 bg-muted/30">
+            <div>
+              <label className="block text-xs font-semibold mb-1 text-muted-foreground uppercase tracking-wide">Nickname</label>
+              <input
+                value={editNickname}
+                onChange={(e) => setEditNickname(e.target.value)}
+                autoFocus
+                className="w-full px-3 py-2.5 rounded-xl bg-input-background border border-border outline-none focus:ring-2 focus:ring-ring text-sm"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold mb-2 text-muted-foreground uppercase tracking-wide">Role</label>
+              <div className="flex flex-wrap gap-2">
+                {(member?.is_child ? CHILD_ROLES : PARENT_ROLES).map((r) => (
+                  <button
+                    key={r}
+                    onClick={() => setEditRole(r)}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-semibold border transition-colors ${
+                      editRole === r ? "bg-primary text-primary-foreground border-primary" : "bg-muted border-transparent"
+                    }`}
+                  >
+                    {r}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold mb-2 text-muted-foreground uppercase tracking-wide">Avatar</label>
+              <EmojiPicker value={editAvatar} onChange={setEditAvatar} />
+            </div>
+            <button
+              onClick={saveProfile}
+              disabled={savingProfile || !editNickname.trim()}
+              className="w-full py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-bold hover:opacity-90 disabled:opacity-60"
+            >
+              {savingProfile ? "Saving…" : "Save changes"}
+            </button>
+          </div>
+        )}
       </section>
 
       {/* Family */}
