@@ -16,9 +16,10 @@ interface Stats {
   totalBooks: number;
   booksFinished: number;
   totalPages: number;
-  bestReader: FamilyMember | null;
+  bestReaders: FamilyMember[];
   bestReaderCount: number;
   latestBook: Book | null;
+  finishedCountByMember: Record<string, number>;
 }
 
 export default function DashboardPage() {
@@ -28,7 +29,7 @@ export default function DashboardPage() {
   const [currentlyReading, setCurrentlyReading] = useState<BookWithData[]>([]);
   const [stats, setStats] = useState<Stats>({
     totalBooks: 0, booksFinished: 0, totalPages: 0,
-    bestReader: null, bestReaderCount: 0, latestBook: null,
+    bestReaders: [], bestReaderCount: 0, latestBook: null, finishedCountByMember: {},
   });
   const [loading, setLoading] = useState(true);
   const [selectedReader, setSelectedReader] = useState<FamilyMember | null>(null);
@@ -70,16 +71,22 @@ export default function DashboardPage() {
       .map((m) => ({ member: m, count: finishedProgress.filter((p) => p.member_id === m.id).length }))
       .sort((a, b) => b.count - a.count);
 
-    const bestReader = finishedByMember[0]?.count > 0 ? finishedByMember[0].member : null;
+    const topCount = finishedByMember[0]?.count ?? 0;
+    const bestReaders = topCount > 0
+      ? finishedByMember.filter((x) => x.count === topCount).map((x) => x.member)
+      : [];
     const totalPages = progress.reduce((acc, p) => acc + p.current_page, 0);
+    const finishedCountByMember: Record<string, number> = {};
+    finishedByMember.forEach(({ member: m, count }) => { finishedCountByMember[m.id] = count; });
 
     setStats({
       totalBooks: books.length,
       booksFinished: finishedProgress.length,
       totalPages,
-      bestReader,
-      bestReaderCount: finishedByMember[0]?.count ?? 0,
+      bestReaders,
+      bestReaderCount: topCount,
       latestBook: books[0] ?? null,
+      finishedCountByMember,
     });
     setRecentBooks(recent);
     setCurrentlyReading(reading);
@@ -132,24 +139,44 @@ export default function DashboardPage() {
         ))}
       </div>
 
-      {/* Star Reader — tappable */}
-      {stats.bestReader && (
+      {/* Star Reader(s) — tappable */}
+      {stats.bestReaders.length === 1 && (
         <button
-          onClick={() => setSelectedReader(stats.bestReader)}
+          onClick={() => setSelectedReader(stats.bestReaders[0])}
           className="w-full text-left bg-gradient-to-r from-primary to-primary/80 rounded-2xl p-5 text-primary-foreground flex items-center gap-4 hover:opacity-95 active:scale-[0.99] transition-all"
         >
-          <span className="text-4xl">{stats.bestReader.avatar_emoji}</span>
+          <span className="text-4xl">{stats.bestReaders[0].avatar_emoji}</span>
           <div className="flex-1">
             <p className="text-primary-foreground/70 text-xs font-semibold uppercase tracking-wide flex items-center gap-1">
               <TrendingUp size={12} /> Star Reader
             </p>
-            <p className="font-display text-xl font-bold">{stats.bestReader.nickname}</p>
+            <p className="font-display text-xl font-bold">{stats.bestReaders[0].nickname}</p>
             <p className="text-primary-foreground/80 text-sm">
               {stats.bestReaderCount} book{stats.bestReaderCount !== 1 ? "s" : ""} finished · tap to view profile
             </p>
           </div>
           <span className="text-3xl">🏆</span>
         </button>
+      )}
+      {stats.bestReaders.length > 1 && (
+        <div className="bg-gradient-to-r from-primary to-primary/80 rounded-2xl p-5 text-primary-foreground">
+          <p className="text-primary-foreground/70 text-xs font-semibold uppercase tracking-wide flex items-center gap-1 mb-3">
+            <TrendingUp size={12} /> Star Readers — {stats.bestReaderCount} book{stats.bestReaderCount !== 1 ? "s" : ""} each
+          </p>
+          <div className="flex gap-3 flex-wrap">
+            {stats.bestReaders.map((r) => (
+              <button
+                key={r.id}
+                onClick={() => setSelectedReader(r)}
+                className="flex items-center gap-2 bg-white/15 hover:bg-white/25 active:scale-[0.97] transition-all rounded-xl px-3 py-2"
+              >
+                <span className="text-2xl">{r.avatar_emoji}</span>
+                <span className="font-display font-bold text-sm">{r.nickname}</span>
+                <span className="text-base">🏆</span>
+              </button>
+            ))}
+          </div>
+        </div>
       )}
 
       {/* Currently reading */}
@@ -224,17 +251,22 @@ export default function DashboardPage() {
       <section>
         <h2 className="font-display font-bold text-lg mb-3">Your readers</h2>
         <div className="flex gap-3 flex-wrap">
-          {allMembers.map((m) => (
-            <button
-              key={m.id}
-              onClick={() => setSelectedReader(m as FamilyMember)}
-              className="flex flex-col items-center gap-1 bg-card border border-border rounded-2xl p-3 min-w-[72px] hover:border-primary/40 hover:shadow-sm active:scale-[0.97] transition-all"
-            >
-              <span className="text-3xl">{m.avatar_emoji}</span>
-              <span className="text-xs font-bold text-center leading-tight">{m.nickname}</span>
-              <span className="text-[10px] text-muted-foreground capitalize">{m.role}</span>
-            </button>
-          ))}
+          {allMembers.map((m) => {
+            const booksRead = stats.finishedCountByMember[m.id] ?? 0;
+            return (
+              <button
+                key={m.id}
+                onClick={() => setSelectedReader(m as FamilyMember)}
+                className="flex flex-col items-center gap-1 bg-card border border-border rounded-2xl p-3 min-w-[72px] hover:border-primary/40 hover:shadow-sm active:scale-[0.97] transition-all"
+              >
+                <span className="text-3xl">{m.avatar_emoji}</span>
+                <span className="text-xs font-bold text-center leading-tight">{m.nickname}</span>
+                <span className="text-[10px] text-muted-foreground">
+                  {booksRead} book{booksRead !== 1 ? "s" : ""} read
+                </span>
+              </button>
+            );
+          })}
         </div>
       </section>
 
@@ -284,7 +316,7 @@ export default function DashboardPage() {
       {/* Reader profile sheet */}
       <ReaderProfileSheet
         member={selectedReader}
-        isBestReader={selectedReader?.id === stats.bestReader?.id && (stats.bestReaderCount > 0)}
+        isBestReader={stats.bestReaders.some((r) => r.id === selectedReader?.id)}
         onClose={() => setSelectedReader(null)}
       />
     </div>
