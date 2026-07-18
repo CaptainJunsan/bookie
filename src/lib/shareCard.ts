@@ -104,9 +104,8 @@ export async function generateAppShareCard(): Promise<Blob> {
   ctx.fillStyle = C.cream;
   ctx.fillRect(0, 0, S, S);
 
-  // Radial warm glow in centre
-  const grd = ctx.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S * 0.7);
-  grd.addColorStop(0, "rgba(212,98,42,0.06)");
+  const grd = ctx.createRadialGradient(S / 2, S * 0.35, 0, S / 2, S * 0.35, S * 0.75);
+  grd.addColorStop(0, "rgba(212,98,42,0.07)");
   grd.addColorStop(1, "rgba(250,246,239,0)");
   ctx.fillStyle = grd;
   ctx.fillRect(0, 0, S, S);
@@ -131,7 +130,7 @@ export async function generateAppShareCard(): Promise<Blob> {
 
   ctx.save();
   ctx.translate(logoX + logoSize / 2, logoY + logoSize / 2);
-  ctx.rotate(-0.26); // -15°
+  ctx.rotate(-0.26);
   ctx.fillStyle = C.cream;
   ctx.font = `bold 68px Fraunces, Georgia, serif`;
   ctx.textAlign = "center";
@@ -146,109 +145,125 @@ export async function generateAppShareCard(): Promise<Blob> {
   ctx.textBaseline = "middle";
   ctx.fillText("Bookie", logoX + logoSize + 24, logoY + logoSize / 2);
 
-  // Tagline under logo
   ctx.fillStyle = C.muted;
   ctx.font = `600 28px Nunito, sans-serif`;
   ctx.fillText("Family Reading Tracker", logoX + logoSize + 24, logoY + logoSize / 2 + 40);
 
-  // ── Hero text (centre) ──
-  const textY = 320;
+  // ── Hero text (centre) — kept in the upper third, well above the cards ──
+  // Font is 96px; fillText draws at baseline. Lines spaced 110px apart.
+  // "adventure" baseline at y=460 → descenders end ~480, leaving clear space to cards at y=680+.
+  const textY = 244;
   ctx.textAlign = "center";
   ctx.fillStyle = C.brown;
   ctx.font = `bold 96px Fraunces, Georgia, serif`;
   ctx.fillText("Your family's", S / 2, textY);
 
   ctx.fillStyle = C.green;
-  ctx.fillText("reading", S / 2, textY + 108);
+  ctx.fillText("reading", S / 2, textY + 110);
 
   ctx.fillStyle = C.brown;
-  ctx.fillText("adventure", S / 2, textY + 216);
+  ctx.fillText("adventure", S / 2, textY + 220);
 
-  // ── Floating book cards ──
+  // ── Large 📚 emoji badge — sits between hero text and the floating cards ──
+  // Centered at y=565, radius=58. Hero text ends ~480, cards start at y=625.
+  const circleY = 565;
+  shadow(ctx, 40, 0.08, 4);
+  ctx.beginPath();
+  ctx.arc(S / 2, circleY, 58, 0, Math.PI * 2);
+  ctx.fillStyle = "#F0E4CB";
+  ctx.fill();
+  clearShadow(ctx);
+  ctx.beginPath();
+  ctx.arc(S / 2, circleY, 58, 0, Math.PI * 2);
+  ctx.strokeStyle = C.border;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.font = "52px sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("📚", S / 2, circleY + 2);
 
-  // Card 1: Charlotte's Web (top-left, tilted left)
-  drawFloatingCard(ctx, 210, 640, 300, 110, -5, (ctx, x, y) => {
-    // Spine
-    roundRect(ctx, x + 16, y + 16, 44, 62, 8);
+  // ── Floating book cards — positioned in the lower half, no overlap with circle ──
+  // Circle bottom edge: 565+58 = 623. Cards start: cy - h/2 ≥ 680.
+
+  // Card 1: Charlotte's Web (left, tilted)
+  drawFloatingCard(ctx, 210, 730, 300, 108, -5, (ctx, x, y) => {
+    roundRect(ctx, x + 16, y + 14, 44, 62, 8);
     ctx.fillStyle = C.green;
     ctx.fill();
     ctx.fillStyle = "#fff";
     ctx.font = "28px sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText("📗", x + 16 + 22, y + 16 + 31);
+    ctx.fillText("📗", x + 16 + 22, y + 14 + 31);
 
-    // Text
     ctx.fillStyle = C.brown;
     ctx.font = `700 20px Nunito, sans-serif`;
     ctx.textAlign = "left";
     ctx.textBaseline = "top";
-    ctx.fillText("Charlotte's Web", x + 74, y + 18);
+    ctx.fillText("Charlotte's Web", x + 74, y + 14);
     ctx.fillStyle = C.muted;
     ctx.font = `400 16px Nunito, sans-serif`;
-    ctx.fillText("E.B. White", x + 74, y + 43);
-    // Stars
+    ctx.fillText("E.B. White", x + 74, y + 38);
     ctx.font = "18px sans-serif";
-    ctx.fillText("⭐⭐⭐⭐⭐", x + 74, y + 68);
+    ctx.fillText("⭐⭐⭐⭐⭐", x + 74, y + 62);
   });
 
-  // Card 2: Harry Potter (top-right, tilted right)
-  drawFloatingCard(ctx, 810, 620, 310, 120, 4, (ctx, x, y) => {
-    roundRect(ctx, x + 16, y + 16, 44, 72, 8);
+  // Card 2: Harry Potter (right, tilted)
+  drawFloatingCard(ctx, 830, 710, 310, 118, 4, (ctx, x, y) => {
+    roundRect(ctx, x + 16, y + 14, 44, 70, 8);
     ctx.fillStyle = C.amber;
     ctx.fill();
     ctx.fillStyle = "#fff";
     ctx.font = "26px sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText("🧙", x + 16 + 22, y + 16 + 36);
+    ctx.fillText("🧙", x + 16 + 22, y + 14 + 35);
 
     ctx.fillStyle = C.brown;
     ctx.font = `700 20px Nunito, sans-serif`;
     ctx.textAlign = "left";
     ctx.textBaseline = "top";
-    ctx.fillText("Harry Potter", x + 74, y + 14);
+    ctx.fillText("Harry Potter", x + 74, y + 12);
     ctx.fillStyle = C.muted;
     ctx.font = `400 16px Nunito, sans-serif`;
-    ctx.fillText("J.K. Rowling", x + 74, y + 39);
+    ctx.fillText("J.K. Rowling", x + 74, y + 36);
 
-    // Avatar dots "3 reading"
     const colours = [C.green, C.rose, C.blue];
     const emojis = ["👩", "🧒", "👨"];
     colours.forEach((col, i) => {
       ctx.beginPath();
-      ctx.arc(x + 74 + i * 22, y + 78, 12, 0, Math.PI * 2);
+      ctx.arc(x + 74 + i * 22, y + 76, 12, 0, Math.PI * 2);
       ctx.fillStyle = col;
       ctx.fill();
       ctx.font = "13px sans-serif";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText(emojis[i], x + 74 + i * 22, y + 78);
+      ctx.fillText(emojis[i], x + 74 + i * 22, y + 76);
     });
     ctx.fillStyle = C.muted;
     ctx.font = `400 15px Nunito, sans-serif`;
     ctx.textAlign = "left";
     ctx.textBaseline = "middle";
-    ctx.fillText("reading", x + 74 + 74, y + 78);
+    ctx.fillText("reading", x + 74 + 74, y + 76);
   });
 
-  // Card 3: Progress (bottom-centre)
-  drawFloatingCard(ctx, S / 2, 830, 340, 96, 1.5, (ctx, x, y) => {
-    ctx.font = "30px sans-serif";
+  // Card 3: Progress bar (bottom centre)
+  drawFloatingCard(ctx, S / 2, 880, 360, 92, 1.5, (ctx, x, y) => {
+    ctx.font = "28px sans-serif";
     ctx.textAlign = "left";
     ctx.textBaseline = "middle";
-    ctx.fillText("🦁", x + 16, y + 32);
+    ctx.fillText("🦁", x + 16, y + 28);
 
     ctx.fillStyle = C.brown;
     ctx.font = `700 20px Nunito, sans-serif`;
     ctx.textBaseline = "top";
-    ctx.fillText("Timmy", x + 60, y + 14);
+    ctx.fillText("Timmy", x + 58, y + 12);
     ctx.fillStyle = C.muted;
     ctx.font = `400 16px Nunito, sans-serif`;
-    ctx.fillText("Reading · p.142 of 320", x + 60, y + 38);
+    ctx.fillText("Reading · p.142 of 320", x + 58, y + 35);
 
-    // Progress bar
-    const barX = x + 16, barY = y + 68, barW = 308 - 16, barH = 10;
+    const barX = x + 16, barY = y + 64, barW = 328, barH = 10;
     roundRect(ctx, barX, barY, barW, barH, 5);
     ctx.fillStyle = C.border;
     ctx.fill();
@@ -257,23 +272,6 @@ export async function generateAppShareCard(): Promise<Blob> {
     ctx.fill();
   });
 
-  // ── Central circle ──
-  shadow(ctx, 40, 0.08, 4);
-  ctx.beginPath();
-  ctx.arc(S / 2, 590, 72, 0, Math.PI * 2);
-  ctx.fillStyle = "#F0E4CB";
-  ctx.fill();
-  clearShadow(ctx);
-  ctx.beginPath();
-  ctx.arc(S / 2, 590, 72, 0, Math.PI * 2);
-  ctx.strokeStyle = C.border;
-  ctx.lineWidth = 2;
-  ctx.stroke();
-  ctx.font = "64px sans-serif";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText("📚", S / 2, 594);
-
   // ── Bottom URL strip ──
   ctx.fillStyle = C.green;
   ctx.fillRect(0, S - 80, S, 80);
@@ -281,10 +279,10 @@ export async function generateAppShareCard(): Promise<Blob> {
   ctx.font = `700 28px Nunito, sans-serif`;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText("Join your family's reading adventure →", S / 2, S - 56);
+  ctx.fillText("Join your family's reading adventure →", S / 2, S - 54);
   ctx.fillStyle = "rgba(255,255,255,0.7)";
   ctx.font = `400 22px "DM Mono", monospace`;
-  ctx.fillText(APP_URL, S / 2, S - 26);
+  ctx.fillText(APP_URL, S / 2, S - 24);
 
   return new Promise<Blob>((resolve, reject) => {
     canvas.toBlob(
@@ -334,7 +332,6 @@ export async function generateBookShareCard(book: BookShareData): Promise<Blob> 
   ctx.fillStyle = grd;
   ctx.fillRect(0, 0, W, H);
 
-  // Dot grid
   ctx.fillStyle = "rgba(59,110,82,0.04)";
   for (let i = 0; i < W; i += 44) {
     for (let j = 0; j < H; j += 44) {
@@ -344,8 +341,8 @@ export async function generateBookShareCard(book: BookShareData): Promise<Blob> 
     }
   }
 
-  // ── Cover image (left side) ──
-  const coverX = 80, coverY = 130, coverW = 320, coverH = 460;
+  // ── Cover image (left column) ──
+  const coverX = 72, coverY = 120, coverW = 300, coverH = 440;
   let coverLoaded = false;
 
   if (book.cover_url) {
@@ -367,95 +364,94 @@ export async function generateBookShareCard(book: BookShareData): Promise<Blob> 
   }
 
   if (!coverLoaded) {
-    // Stylised placeholder
     shadow(ctx, 40, 0.12, 8);
     roundRect(ctx, coverX, coverY, coverW, coverH, 16);
     ctx.fillStyle = C.greenLight;
     ctx.fill();
     clearShadow(ctx);
-
     ctx.font = "96px sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillText("📚", coverX + coverW / 2, coverY + coverH / 2);
   }
 
-  // ── Book info (right side) ──
-  const infoX = 456, infoY = 130;
-  const maxW = W - infoX - 60;
+  // ── Book info (right column) ──
+  // Right column spans infoX to W-60. Hard cap at y=540 to protect the branding row.
+  const infoX = 420, infoY = 120;
+  const maxInfoW = W - infoX - 60;
+  const maxInfoBottom = 530; // nothing in the right column goes below this
 
-  // Title (word-wrap to ~2 lines)
-  ctx.fillStyle = C.brown;
   ctx.textAlign = "left";
   ctx.textBaseline = "top";
-  const titleSize = book.title.length > 20 ? 56 : 68;
-  ctx.font = `bold ${titleSize}px Fraunces, Georgia, serif`;
 
-  // Simple word-wrap
-  const words = book.title.split(" ");
-  let line = "";
+  // Title — word-wrap, 2 lines max
+  const titleFontSize = book.title.length > 22 ? 52 : 64;
+  ctx.fillStyle = C.brown;
+  ctx.font = `bold ${titleFontSize}px Fraunces, Georgia, serif`;
+  const titleWords = book.title.split(" ");
+  let titleLine = "";
   let lineY = infoY;
-  for (const word of words) {
-    const test = line ? `${line} ${word}` : word;
-    if (ctx.measureText(test).width > maxW && line) {
-      ctx.fillText(line, infoX, lineY);
-      line = word;
-      lineY += titleSize + 8;
-      if (lineY > infoY + titleSize * 3) { line = "…"; break; }
+  for (const word of titleWords) {
+    const test = titleLine ? `${titleLine} ${word}` : word;
+    if (ctx.measureText(test).width > maxInfoW && titleLine) {
+      if (lineY < maxInfoBottom) ctx.fillText(titleLine, infoX, lineY);
+      titleLine = word;
+      lineY += titleFontSize + 10;
+      if (lineY > infoY + titleFontSize * 2 + 10) { titleLine = "…"; break; }
     } else {
-      line = test;
+      titleLine = test;
     }
   }
-  if (line) ctx.fillText(line, infoX, lineY);
-  lineY += titleSize + 16;
+  if (titleLine && lineY < maxInfoBottom) ctx.fillText(titleLine, infoX, lineY);
+  lineY += titleFontSize + 18;
 
   // Author
-  if (book.author) {
+  if (book.author && lineY < maxInfoBottom) {
     ctx.fillStyle = C.muted;
-    ctx.font = `400 32px Nunito, sans-serif`;
+    ctx.font = `400 30px Nunito, sans-serif`;
     ctx.fillText(`by ${book.author}`, infoX, lineY);
-    lineY += 52;
+    lineY += 50;
   }
 
   // Stars
-  if (book.readerRating) {
-    ctx.font = "36px sans-serif";
-    const stars = "⭐".repeat(book.readerRating);
-    ctx.fillText(stars, infoX, lineY);
-    lineY += 56;
+  if (book.readerRating && lineY < maxInfoBottom) {
+    ctx.font = "34px sans-serif";
+    ctx.fillText("⭐".repeat(book.readerRating), infoX, lineY);
+    lineY += 54;
   }
 
-  // Review excerpt
-  if (book.review) {
+  // Review — 3 lines max, capped at maxInfoBottom
+  if (book.review && lineY < maxInfoBottom - 40) {
     lineY += 8;
     ctx.fillStyle = C.brown;
-    ctx.font = `italic 28px Nunito, sans-serif`;
+    ctx.font = `italic 26px Nunito, sans-serif`;
     const reviewWords = book.review.split(" ");
     let rLine = '"';
     let rY = lineY;
     for (const w of reviewWords) {
-      const test = rLine + (rLine === '"' ? "" : " ") + w;
-      if (ctx.measureText(test + '"').width > maxW && rLine !== '"') {
-        ctx.fillText(rLine, infoX, rY);
+      const test = rLine === '"' ? `"${w}` : `${rLine} ${w}`;
+      if (ctx.measureText(test + '"').width > maxInfoW && rLine !== '"') {
+        if (rY < maxInfoBottom) ctx.fillText(rLine, infoX, rY);
         rLine = w;
-        rY += 38;
-        if (rY > lineY + 115) { ctx.fillText(rLine + '…"', infoX, rY); break; }
+        rY += 36;
+        if (rY > lineY + 108 || rY > maxInfoBottom) {
+          if (rY <= maxInfoBottom) ctx.fillText(rLine + '…"', infoX, rY);
+          break;
+        }
       } else {
-        rLine = test === '"' ? `"${w}` : `${test}`;
+        rLine = test;
       }
     }
-    if (ctx.measureText(rLine + '"').width <= maxW) {
+    if (rY <= maxInfoBottom && ctx.measureText(rLine + '"').width <= maxInfoW) {
       ctx.fillText(rLine + '"', infoX, rY);
     }
-    lineY = rY + 50;
   }
 
-  // ── Bookie branding (bottom of right column) ──
-  const brandY = coverY + coverH - 60;
-  // Logo mark
-  const lsz = 52;
+  // ── Bookie branding (anchored to bottom of cover, right column) ──
+  const brandY = coverY + coverH - 48; // = 512
+  const lsz = 48;
   shadow(ctx, 12, 0.12, 4);
-  roundRect(ctx, infoX, brandY, lsz, lsz, 12);
+  roundRect(ctx, infoX, brandY, lsz, lsz, 11);
   ctx.fillStyle = C.green;
   ctx.fill();
   clearShadow(ctx);
@@ -464,39 +460,39 @@ export async function generateBookShareCard(book: BookShareData): Promise<Blob> 
   ctx.translate(infoX + lsz / 2, brandY + lsz / 2);
   ctx.rotate(-0.26);
   ctx.fillStyle = C.cream;
-  ctx.font = `bold 38px Fraunces, Georgia, serif`;
+  ctx.font = `bold 34px Fraunces, Georgia, serif`;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillText("B", 0, 2);
   ctx.restore();
 
   ctx.fillStyle = C.brown;
-  ctx.font = `bold 36px Fraunces, Georgia, serif`;
+  ctx.font = `bold 32px Fraunces, Georgia, serif`;
   ctx.textAlign = "left";
   ctx.textBaseline = "middle";
-  ctx.fillText("Bookie", infoX + lsz + 14, brandY + lsz / 2 - 5);
+  ctx.fillText("Bookie", infoX + lsz + 12, brandY + lsz / 2 - 6);
   ctx.fillStyle = C.muted;
-  ctx.font = `400 20px Nunito, sans-serif`;
-  ctx.fillText("Family Reading Tracker", infoX + lsz + 14, brandY + lsz / 2 + 20);
+  ctx.font = `400 18px Nunito, sans-serif`;
+  ctx.fillText("Family Reading Tracker", infoX + lsz + 12, brandY + lsz / 2 + 16);
 
   // ── Divider ──
   ctx.fillStyle = C.border;
-  ctx.fillRect(60, 640, W - 120, 2);
+  ctx.fillRect(60, 612, W - 120, 2);
 
-  // ── Bottom: "Reading on Bookie" + family name + URL ──
-  const btmY = 680;
+  // ── Bottom section ──
+  const btmY = 648;
   ctx.fillStyle = C.brown;
   ctx.font = `bold 40px Fraunces, Georgia, serif`;
   ctx.textAlign = "center";
   ctx.textBaseline = "top";
   const familyLine = book.familyName
-    ? `${book.familyName} is reading on Bookie`
+    ? `${book.familyName} reads on Bookie`
     : "Reading on Bookie";
   ctx.fillText(familyLine, W / 2, btmY);
 
   ctx.fillStyle = C.muted;
-  ctx.font = `400 28px Nunito, sans-serif`;
-  ctx.fillText("Track your family's reading adventures together 📚", W / 2, btmY + 56);
+  ctx.font = `400 27px Nunito, sans-serif`;
+  ctx.fillText("Track your family's reading adventures together 📚", W / 2, btmY + 54);
 
   // ── Green bottom strip ──
   ctx.fillStyle = C.green;
@@ -505,7 +501,7 @@ export async function generateBookShareCard(book: BookShareData): Promise<Blob> 
   ctx.font = `700 26px Nunito, sans-serif`;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText("Join us →  " + APP_URL, W / 2, H - 40);
+  ctx.fillText(`Join us → ${APP_URL}`, W / 2, H - 40);
 
   return new Promise<Blob>((resolve, reject) => {
     canvas.toBlob(
@@ -530,18 +526,18 @@ export async function shareWithOS(payload: {
 
   try {
     if (blob && navigator.canShare?.({ files: [new File([blob], fileName ?? "share.png", { type: "image/png" })] })) {
+      // When sharing a file, don't also pass url — iOS appends it after the text,
+      // causing a double-link since the text already contains the URL.
       await navigator.share({
         files: [new File([blob], fileName ?? "share.png", { type: "image/png" })],
         title,
         text,
-        url,
       });
     } else {
       await navigator.share({ title, text, url });
     }
     return "shared";
   } catch (e: unknown) {
-    // User cancelled — not an error
     if (e instanceof Error && e.name === "AbortError") return "shared";
     return "fallback";
   }

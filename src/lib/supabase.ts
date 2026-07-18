@@ -24,6 +24,10 @@ export function getPublicUrl(path: string): string {
   return data.publicUrl;
 }
 
+function toHttps(url: string): string {
+  return url.replace(/^http:\/\//, "https://");
+}
+
 export async function fetchBookByIsbn(isbn: string) {
   const cleaned = isbn.replace(/[^0-9X]/gi, "");
 
@@ -33,8 +37,10 @@ export async function fetchBookByIsbn(isbn: string) {
   let coverUrl: string | null = null;
 
   // ── 1. Open Library Books API ───────────────────────────────────────────
-  // Use ID-based cover URLs only — the ISBN-direct URL (covers.openlibrary.org/b/isbn/…-L.jpg)
-  // returns a 1×1 transparent placeholder for missing covers, which looks blank in the UI.
+  // Use ID-based cover URLs (reliable). ISBN-direct CDN URL also works for books
+  // that have covers, but the ID-based URL from the API response is more precise.
+  // IMPORTANT: always upgrade to https — OL returns http:// which browsers block
+  // on HTTPS pages as mixed content, causing the image to silently not load.
   try {
     const res = await fetch(
       `https://openlibrary.org/api/books?bibkeys=ISBN:${cleaned}&format=json&jscmd=data`
@@ -45,9 +51,8 @@ export async function fetchBookByIsbn(isbn: string) {
       title = book.title as string;
       author = (book.authors?.[0]?.name as string) ?? undefined;
       pageCount = (book.number_of_pages as number) ?? undefined;
-      // ID-based URLs are reliable; don't fall back to the ISBN direct URL
       const olCover = book.cover?.large || book.cover?.medium || book.cover?.small;
-      if (olCover) coverUrl = olCover as string;
+      if (olCover) coverUrl = toHttps(olCover as string);
     }
   } catch { /* fall through */ }
 
@@ -72,8 +77,7 @@ export async function fetchBookByIsbn(isbn: string) {
             info.imageLinks?.large ||
             info.imageLinks?.thumbnail ||
             info.imageLinks?.smallThumbnail;
-          // Upgrade to https — don't modify zoom as zoom=0 isn't universally available
-          if (thumb) coverUrl = (thumb as string).replace("http://", "https://");
+          if (thumb) coverUrl = toHttps(thumb as string);
         }
       }
     } catch { /* fall through */ }
