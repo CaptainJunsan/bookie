@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import { X, Upload, Camera, Loader2, Search, BookOpen } from "lucide-react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { supabase, fetchBookByIsbn } from "../lib/supabase";
@@ -16,23 +16,27 @@ export default function BookEditSheet({ book, onClose, onSaved }: Props) {
   const { family } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [title, setTitle] = useState(book?.title ?? "");
-  const [author, setAuthor] = useState(book?.author ?? "");
-  const [isbn, setIsbn] = useState(book?.isbn ?? "");
-  const [pageCount, setPageCount] = useState(String(book?.page_count ?? ""));
-  const [coverPreview, setCoverPreview] = useState(book?.cover_url ?? "");
+  const [title, setTitle] = useState("");
+  const [author, setAuthor] = useState("");
+  const [isbn, setIsbn] = useState("");
+  const [pageCount, setPageCount] = useState("");
+  const [coverPreview, setCoverPreview] = useState("");
   const [coverFile, setCoverFile] = useState<File | null>(null);
   const [newRemoteCoverUrl, setNewRemoteCoverUrl] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [fetchingIsbn, setFetchingIsbn] = useState(false);
 
-  // Reset to fresh values when the book prop changes (Dialog opened for a different book)
-  const lastBookId = useRef<string | null>(null);
-  if (book && book.id !== lastBookId.current) {
-    lastBookId.current = book.id;
-    // These are only safe to call during render when the prop changes identity
-    // eslint-disable-next-line no-restricted-syntax
-  }
+  // Sync fields whenever the sheet opens for a (different) book
+  useEffect(() => {
+    if (!book) return;
+    setTitle(book.title ?? "");
+    setAuthor(book.author ?? "");
+    setIsbn(book.isbn ?? "");
+    setPageCount(book.page_count ? String(book.page_count) : "");
+    setCoverPreview(book.cover_url ?? "");
+    setCoverFile(null);
+    setNewRemoteCoverUrl(null);
+  }, [book?.id]);
 
   async function refetchByIsbn() {
     if (!isbn.trim()) return;
