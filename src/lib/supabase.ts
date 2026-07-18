@@ -5,7 +5,6 @@ const supabaseAnonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY as string) || ""
 
 export const isSupabaseConfigured = !!(supabaseUrl && supabaseAnonKey);
 
-// Safe client — only created when env vars are present
 export const supabase = createClient(
   supabaseUrl || "https://placeholder.supabase.co",
   supabaseAnonKey || "placeholder-key",
@@ -31,60 +30,50 @@ function toHttps(url: string): string {
 export async function fetchBookByIsbn(isbn: string) {
   const cleaned = isbn.replace(/[^0-9X]/gi, "");
 
-  let title: string | undefined;
-  let author: string | undefined;
-  let pageCount: number | undefined;
-  let coverUrl: string | null = null;
-
-  // ── 1. Open Library Books API ───────────────────────────────────────────
-  // Use ID-based cover URLs (reliable). ISBN-direct CDN URL also works for books
-  // that have covers, but the ID-based URL from the API response is more precise.
-  // IMPORTANT: always upgrade to https — OL returns http:// which browsers block
-  // on HTTPS pages as mixed content, causing the image to silently not load.
+  // ── 1. Open Library Search API ─────────────────────────────────────────────
+  // Faster and more reliable than the Books API for cover lookup.
+  // cover_i gives a stable numeric ID → HTTPS CDN URL with no mixed-content issues.
   try {
     const res = await fetch(
-      `https://openlibrary.org/api/books?bibkeys=ISBN:${cleaned}&format=json&jscmd=data`
+      `https://openlibrary.org/search.json?isbn=${cleaned}&limit=1&fields=title,author_name,cover_i,number_of_pages_median`
     );
     const data = await res.json();
-    const book = data[`ISBN:${cleaned}`];
-    if (book?.title) {
-      title = book.title as string;
-      author = (book.authors?.[0]?.name as string) ?? undefined;
-      pageCount = (book.number_of_pages as number) ?? undefined;
-      const olCover = book.cover?.large || book.cover?.medium || book.cover?.small;
-      if (olCover) coverUrl = toHttps(olCover as string);
+    const doc = data.docs?.[0];
+    if (doc?.title) {
+      return {
+        title: doc.title as string,
+        author: (doc.author_name?.[0] as string) ?? undefined,
+        cover_url: doc.cover_i
+          ? `https://covers.openlibrary.org/b/id/${doc.cover_i}-L.jpg`
+          : null,
+        page_count: (doc.number_of_pages_median as number) ?? undefined,
+      };
     }
   } catch { /* fall through */ }
 
-  // ── 2. Google Books API ─────────────────────────────────────────────────
-  // Used as cover fallback when OL has no cover, and as full fallback when OL doesn't know the ISBN.
-  if (!title || !coverUrl) {
-    try {
-      const res = await fetch(
-        `https://www.googleapis.com/books/v1/volumes?q=isbn:${cleaned}&maxResults=1`
-      );
-      const data = await res.json();
-      const info = data.items?.[0]?.volumeInfo;
-      if (info?.title) {
-        if (!title) {
-          title = info.title as string;
-          author = (info.authors?.[0] as string) ?? undefined;
-          pageCount = (info.pageCount as number) ?? undefined;
-        }
-        if (!coverUrl) {
-          const thumb =
-            info.imageLinks?.extraLarge ||
-            info.imageLinks?.large ||
-            info.imageLinks?.thumbnail ||
-            info.imageLinks?.smallThumbnail;
-          if (thumb) coverUrl = toHttps(thumb as string);
-        }
-      }
-    } catch { /* fall through */ }
-  }
+  // ── 2. Google Books API (fallback) ──────────────────────────────────────────
+  try {
+    const res = await fetch(
+      `https://www.googleapis.com/books/v1/volumes?q=isbn:${cleaned}&maxResults=1`
+    );
+    const data = await res.json();
+    const info = data.items?.[0]?.volumeInfo;
+    if (info?.title) {
+      const thumb =
+        info.imageLinks?.extraLarge ||
+        info.imageLinks?.large ||
+        info.imageLinks?.thumbnail ||
+        info.imageLinks?.smallThumbnail;
+      return {
+        title: info.title as string,
+        author: (info.authors?.[0] as string) ?? undefined,
+        cover_url: thumb ? toHttps(thumb as string) : null,
+        page_count: (info.pageCount as number) ?? undefined,
+      };
+    }
+  } catch { /* fall through */ }
 
-  if (!title) return null;
-  return { title, author, cover_url: coverUrl, page_count: pageCount };
+  return null;
 }
 
 /** @deprecated use fetchBookByIsbn */
