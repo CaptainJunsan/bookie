@@ -297,7 +297,10 @@ export default function BookDetailPage() {
           <div className="space-y-3">
             {allMembers.map((m: FamilyMember) => {
               const prog = progressByMember[m.id];
-              const pct = book.page_count && prog ? Math.min(100, Math.round((prog.current_page / book.page_count) * 100)) : null;
+              const isFinished = prog?.status === "finished";
+              const pct = book.page_count && prog
+                ? (isFinished ? 100 : Math.min(99, Math.round((prog.current_page / book.page_count) * 100)))
+                : null;
               const isMe = m.id === member?.id;
               const editable = canEdit(m);
               const isUpdating = updatingMember === m.id;
@@ -313,15 +316,21 @@ export default function BookDetailPage() {
                       </p>
                       <p className="text-xs text-muted-foreground capitalize">{prog ? STATUS_LABELS[prog.status] : "Not started"}</p>
                     </div>
-                    {pct !== null && prog?.status !== "finished" && (
+                    {pct !== null && !isFinished && (
                       <span className="text-sm font-bold" style={{ color: m.color }}>{pct}%</span>
                     )}
-                    {prog?.status === "finished" && <Check size={16} className="text-primary" />}
+                    {isFinished && <Check size={16} className="text-primary" />}
                   </div>
 
                   {pct !== null && (
                     <div className="h-2 bg-muted rounded-full overflow-hidden mb-3">
-                      <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: m.color }} />
+                      <div
+                        className="h-full rounded-full transition-all"
+                        style={{
+                          width: `${pct}%`,
+                          backgroundColor: isFinished ? "var(--primary)" : m.color,
+                        }}
+                      />
                     </div>
                   )}
 
