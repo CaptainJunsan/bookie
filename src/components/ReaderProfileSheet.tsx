@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router";
 import { X, Share2, BookOpen, TrendingUp, Loader2 } from "lucide-react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { supabase } from "../lib/supabase";
@@ -51,11 +52,17 @@ interface Props {
 
 export default function ReaderProfileSheet({ member, isBestReader = false, onClose }: Props) {
   const { member: currentMember } = useAuth();
+  const navigate = useNavigate();
   const [stats, setStats] = useState<ReaderStats | null>(null);
   const [loading, setLoading] = useState(false);
   const [sharing, setSharing] = useState(false);
 
   const isMe = member?.id === currentMember?.id;
+
+  function goToBook(bookId: string) {
+    onClose();
+    navigate(`/books/${bookId}`);
+  }
 
   useEffect(() => {
     if (!member) { setStats(null); return; }
@@ -265,7 +272,11 @@ export default function ReaderProfileSheet({ member, isBestReader = false, onClo
                               ? Math.min(100, Math.round((progress.current_page / book.page_count) * 100))
                               : null;
                             return (
-                              <div key={book?.id} className="flex items-center gap-3 bg-secondary rounded-xl p-3">
+                              <button
+                                key={book?.id}
+                                onClick={() => book?.id && goToBook(book.id)}
+                                className="w-full text-left flex items-center gap-3 bg-secondary rounded-xl p-3 hover:bg-muted active:scale-[0.98] transition-all"
+                              >
                                 <div className="w-9 h-14 rounded-lg overflow-hidden bg-muted flex-shrink-0 flex items-center justify-center text-lg">
                                   {book?.cover_url
                                     ? <img src={book.cover_url} alt={book.title} className="w-full h-full object-cover" />
@@ -287,7 +298,7 @@ export default function ReaderProfileSheet({ member, isBestReader = false, onClo
                                     </div>
                                   )}
                                 </div>
-                              </div>
+                              </button>
                             );
                           })}
                         </div>
@@ -302,8 +313,13 @@ export default function ReaderProfileSheet({ member, isBestReader = false, onClo
                         </h3>
                         <div className="grid grid-cols-5 gap-2">
                           {stats.finishedBooks.slice(0, 10).map(({ book, rating }) => (
-                            <div key={book?.id} className="flex flex-col gap-1">
-                              <div className="aspect-[2/3] rounded-lg overflow-hidden bg-secondary flex items-center justify-center text-xl">
+                            <button
+                              key={book?.id}
+                              onClick={() => book?.id && goToBook(book.id)}
+                              className="flex flex-col gap-1 group"
+                              title={book?.title}
+                            >
+                              <div className="aspect-[2/3] rounded-lg overflow-hidden bg-secondary flex items-center justify-center text-xl group-hover:ring-2 group-hover:ring-primary/50 group-active:scale-95 transition-all">
                                 {book?.cover_url
                                   ? <img src={book.cover_url} alt={book.title} className="w-full h-full object-cover" />
                                   : "📘"}
@@ -313,7 +329,7 @@ export default function ReaderProfileSheet({ member, isBestReader = false, onClo
                                   {"⭐".repeat(rating.reader_rating)}
                                 </p>
                               )}
-                            </div>
+                            </button>
                           ))}
                         </div>
                         {stats.finishedBooks.length > 10 && (

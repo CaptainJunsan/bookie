@@ -11,7 +11,7 @@ type FilterStatus = "all" | "want_to_read" | "reading" | "finished";
 interface BookWithData {
   book: Book;
   progress: ReadingProgress[];
-  rating: Rating | null;
+  ratings: Rating[]; // all ratings for this book across all family members
 }
 
 export default function BooksPage() {
@@ -43,7 +43,7 @@ export default function BooksPage() {
     const combined = rawBooks.map((book) => ({
       book,
       progress: progress.filter((p) => p.book_id === book.id),
-      rating: ratings.find((r) => r.book_id === book.id && r.member_id === member?.id) ?? null,
+      ratings: ratings.filter((r) => r.book_id === book.id),
     }));
     setBooks(combined);
     setLoading(false);
@@ -108,12 +108,12 @@ export default function BooksPage() {
         </div>
       ) : filtered.length > 0 ? (
         <div className="space-y-3">
-          {filtered.map(({ book, progress, rating }) => (
+          {filtered.map(({ book, progress, ratings }) => (
             <BookCard
               key={book.id}
               book={book}
               progress={progress}
-              rating={rating}
+              ratings={ratings}
               members={allMembers}
             />
           ))}
