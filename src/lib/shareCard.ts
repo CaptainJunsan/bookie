@@ -511,6 +511,247 @@ export async function generateBookShareCard(book: BookShareData): Promise<Blob> 
   });
 }
 
+// ─── Reader share card ────────────────────────────────────────────────────────
+
+function hexToRgba(hex: string, alpha: number): string {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+export interface ReaderShareData {
+  nickname: string;
+  avatarEmoji: string;
+  role: string;
+  color: string;
+  isBestReader: boolean;
+  booksFinished: number;
+  totalPagesRead: number;
+  booksReading: number;
+  avgRating: number | null;
+  reviewsWritten: number;
+  level: string;
+  levelEmoji: string;
+  score: number;
+  recentCovers: string[]; // up to 4 Supabase-stored URLs (same-origin, canvas-safe)
+}
+
+export async function generateReaderShareCard(data: ReaderShareData): Promise<Blob> {
+  await ensureFonts();
+
+  const S = 1080;
+  const canvas = document.createElement("canvas");
+  canvas.width = S;
+  canvas.height = S;
+  const ctx = canvas.getContext("2d")!;
+  const mc = data.color || C.green;
+
+  // ── Background ──
+  ctx.fillStyle = C.cream;
+  ctx.fillRect(0, 0, S, S);
+
+  // Radial glow in member's colour
+  const grd = ctx.createRadialGradient(S / 2, S * 0.28, 0, S / 2, S * 0.28, S * 0.75);
+  grd.addColorStop(0, hexToRgba(mc, 0.14));
+  grd.addColorStop(1, "rgba(250,246,239,0)");
+  ctx.fillStyle = grd;
+  ctx.fillRect(0, 0, S, S);
+
+  // Dot grid
+  ctx.fillStyle = hexToRgba(mc, 0.05);
+  for (let i = 0; i < S; i += 44) {
+    for (let j = 0; j < S; j += 44) {
+      ctx.beginPath();
+      ctx.arc(i, j, 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // ── Bookie logo (top-left) ──
+  const lsz = 52;
+  shadow(ctx, 14, 0.12, 4);
+  roundRect(ctx, 60, 60, lsz, lsz, 13);
+  ctx.fillStyle = C.green;
+  ctx.fill();
+  clearShadow(ctx);
+  ctx.save();
+  ctx.translate(60 + lsz / 2, 60 + lsz / 2);
+  ctx.rotate(-0.26);
+  ctx.fillStyle = C.cream;
+  ctx.font = `bold 36px Fraunces, Georgia, serif`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("B", 0, 2);
+  ctx.restore();
+  ctx.fillStyle = C.brown;
+  ctx.font = `bold 38px Fraunces, Georgia, serif`;
+  ctx.textAlign = "left";
+  ctx.textBaseline = "middle";
+  ctx.fillText("Bookie", 60 + lsz + 12, 60 + lsz / 2);
+
+  // ── Star Reader badge (top-right) ──
+  if (data.isBestReader) {
+    const badgeW = 220, badgeH = 52;
+    roundRect(ctx, S - 60 - badgeW, 60, badgeW, badgeH, 26);
+    ctx.fillStyle = C.green;
+    ctx.fill();
+    ctx.fillStyle = "#fff";
+    ctx.font = `700 22px Nunito, sans-serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("⭐ Star Reader", S - 60 - badgeW / 2, 60 + badgeH / 2);
+  }
+
+  // ── Avatar circle ──
+  const avatarCY = 268, avatarR = 88;
+  shadow(ctx, 40, 0.14, 8);
+  ctx.beginPath();
+  ctx.arc(S / 2, avatarCY, avatarR, 0, Math.PI * 2);
+  ctx.fillStyle = hexToRgba(mc, 0.18);
+  ctx.fill();
+  clearShadow(ctx);
+  ctx.beginPath();
+  ctx.arc(S / 2, avatarCY, avatarR, 0, Math.PI * 2);
+  ctx.strokeStyle = hexToRgba(mc, 0.45);
+  ctx.lineWidth = 4;
+  ctx.stroke();
+  ctx.font = "96px sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(data.avatarEmoji, S / 2, avatarCY + 4);
+
+  // ── Name ──
+  ctx.fillStyle = C.brown;
+  ctx.font = `bold 68px Fraunces, Georgia, serif`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "top";
+  ctx.fillText(data.nickname, S / 2, avatarCY + avatarR + 22);
+
+  // ── Role ──
+  ctx.fillStyle = C.muted;
+  ctx.font = `400 28px Nunito, sans-serif`;
+  ctx.fillText(data.role, S / 2, avatarCY + avatarR + 100);
+
+  // ── Level badge ──
+  const levelY = avatarCY + avatarR + 148;
+  const levelText = `${data.levelEmoji}  ${data.level}`;
+  ctx.font = `700 24px Nunito, sans-serif`;
+  const levelW = ctx.measureText(levelText).width + 48;
+  roundRect(ctx, S / 2 - levelW / 2, levelY, levelW, 46, 23);
+  ctx.fillStyle = hexToRgba(mc, 0.14);
+  ctx.fill();
+  ctx.strokeStyle = hexToRgba(mc, 0.35);
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  ctx.fillStyle = mc;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(levelText, S / 2, levelY + 23);
+
+  // ── Stats (2 rows × 3 cols) ──
+  const statW = 310, statGap = 15, statH = 118;
+  const statStartX = (S - (3 * statW + 2 * statGap)) / 2;
+  const row1Y = levelY + 46 + 36;
+  const row2Y = row1Y + statH + 14;
+
+  const statsRows = [
+    [
+      { emoji: "✅", value: String(data.booksFinished), label: "Books finished" },
+      { emoji: "📄", value: data.totalPagesRead.toLocaleString(), label: "Pages read" },
+      { emoji: "📖", value: String(data.booksReading), label: "Reading now" },
+    ],
+    [
+      { emoji: "⭐", value: data.avgRating ? data.avgRating.toFixed(1) : "–", label: "Avg rating" },
+      { emoji: "✍️", value: String(data.reviewsWritten), label: "Reviews written" },
+      { emoji: "🏆", value: String(data.score), label: "Bookworm score" },
+    ],
+  ];
+
+  statsRows.forEach((row, rowIdx) => {
+    const rowY = rowIdx === 0 ? row1Y : row2Y;
+    row.forEach((stat, colIdx) => {
+      const sx = statStartX + colIdx * (statW + statGap);
+      shadow(ctx, 16, 0.06, 4);
+      roundRect(ctx, sx, rowY, statW, statH, 18);
+      ctx.fillStyle = C.card;
+      ctx.fill();
+      clearShadow(ctx);
+      roundRect(ctx, sx, rowY, statW, statH, 18);
+      ctx.strokeStyle = C.border;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      ctx.font = "34px sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "top";
+      ctx.fillText(stat.emoji, sx + statW / 2, rowY + 12);
+      ctx.fillStyle = C.brown;
+      ctx.font = `bold 38px Fraunces, Georgia, serif`;
+      ctx.fillText(stat.value, sx + statW / 2, rowY + 50);
+      ctx.fillStyle = C.muted;
+      ctx.font = `400 20px Nunito, sans-serif`;
+      ctx.fillText(stat.label, sx + statW / 2, rowY + 92);
+    });
+  });
+
+  // ── Recent book covers ──
+  const coversStartY = row2Y + statH + 32;
+  const covers = data.recentCovers.slice(0, 4);
+  if (covers.length > 0) {
+    const coverW = 112, coverH = 164, coverGap = 22;
+    const totalCoverW = covers.length * coverW + (covers.length - 1) * coverGap;
+    const coverStartX = (S - totalCoverW) / 2;
+
+    const angles = [-3, 2.5, -2, 3.5];
+    await Promise.all(covers.map(async (url, i) => {
+      const img = await loadImage(url);
+      const cx = coverStartX + i * (coverW + coverGap) + coverW / 2;
+      const cy = coversStartY + coverH / 2;
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate((angles[i] ?? 0) * Math.PI / 180);
+      shadow(ctx, 20, 0.15, 6);
+      roundRect(ctx, -coverW / 2, -coverH / 2, coverW, coverH, 10);
+      ctx.fillStyle = C.border;
+      ctx.fill();
+      clearShadow(ctx);
+      if (img) {
+        ctx.save();
+        roundRect(ctx, -coverW / 2, -coverH / 2, coverW, coverH, 10);
+        ctx.clip();
+        ctx.drawImage(img, -coverW / 2, -coverH / 2, coverW, coverH);
+        ctx.restore();
+      } else {
+        ctx.font = "48px sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText("📘", 0, 0);
+      }
+      ctx.restore();
+    }));
+  }
+
+  // ── Green bottom strip ──
+  ctx.fillStyle = C.green;
+  ctx.fillRect(0, S - 80, S, 80);
+  ctx.fillStyle = "#fff";
+  ctx.font = `700 26px Nunito, sans-serif`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("Track your family's reading on Bookie 📚", S / 2, S - 54);
+  ctx.fillStyle = "rgba(255,255,255,0.7)";
+  ctx.font = `400 22px "DM Mono", monospace`;
+  ctx.fillText(APP_URL, S / 2, S - 24);
+
+  return new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => (blob ? resolve(blob) : reject(new Error("Canvas toBlob failed"))),
+      "image/png"
+    );
+  });
+}
+
 // ─── Share helpers ────────────────────────────────────────────────────────────
 
 export async function shareWithOS(payload: {

@@ -1,7 +1,7 @@
 
-  # Book Tracking App
+  # Bookie
 
-  This is a code bundle for Book Tracking App. The original project is available at https://www.figma.com/design/3UyyAsekVIs9iDEeL9B5kB/Book-Tracking-App.
+  This is a code bundle for Bookie. The original project is available at https://www.figma.com/design/3UyyAsekVIs9iDEeL9B5kB/Bookie.
 
   ## Running the code
 
