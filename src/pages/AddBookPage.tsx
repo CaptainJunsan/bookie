@@ -182,7 +182,7 @@ export default function AddBookPage() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto px-4 py-6 pb-24">
+    <div className="max-w-2xl lg:max-w-3xl mx-auto px-4 lg:px-8 py-6 pb-24 lg:pb-8">
       <div className="flex items-center gap-3 mb-6">
         <button onClick={() => navigate(-1)} className="w-9 h-9 rounded-xl bg-secondary flex items-center justify-center hover:bg-muted transition-colors">
           <ArrowLeft size={18} />

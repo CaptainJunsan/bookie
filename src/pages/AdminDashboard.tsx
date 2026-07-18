@@ -92,7 +92,7 @@ export default function AdminDashboard() {
       fetchFamiliesReport(),
     ]);
 
-    if (!ov && bk.length === 0) setFetchError(true);
+    if (!ov) setFetchError(true);
 
     setOverview(ov);
     setBooks(bk);
@@ -260,7 +260,7 @@ export default function AdminDashboard() {
       )}
 
       {/* ── CONTENT ──────────────────────────────────────────────────────── */}
-      <main className="flex-1 max-w-3xl mx-auto w-full px-4 py-6 pb-12 space-y-6">
+      <main className="flex-1 max-w-5xl mx-auto w-full px-4 lg:px-8 py-6 pb-12 space-y-6">
 
         {/* ══ SETUP ERROR STATE ══ */}
         {fetchError && (

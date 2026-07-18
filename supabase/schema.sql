@@ -262,12 +262,32 @@ returns boolean language sql security definer set search_path = public as $$
 $$;
 
 -- Overview stats: all-time counts across entire platform
+-- Defensive: handles missing age_group column and milestone_celebrations table gracefully
 create or replace function public.admin_overview_stats()
 returns jsonb language plpgsql security definer set search_path = public as $$
+declare
+  v_members_without_age_group int := 0;
+  v_total_milestones int := 0;
 begin
   if not public.is_super_admin() then
     raise exception 'unauthorized';
   end if;
+
+  -- age_group column may not exist yet; catch undefined_column
+  begin
+    select count(*)::int into v_members_without_age_group
+    from family_members where age_group is null;
+  exception when undefined_column then
+    v_members_without_age_group := 0;
+  end;
+
+  -- milestone_celebrations table may not exist yet; catch undefined_table
+  begin
+    select count(*)::int into v_total_milestones from milestone_celebrations;
+  exception when undefined_table then
+    v_total_milestones := 0;
+  end;
+
   return jsonb_build_object(
     'total_families',            (select count(*)::int from families),
     'total_members',             (select count(*)::int from family_members),
@@ -283,8 +303,8 @@ begin
     ),
     'total_reviews',             (select count(*)::int from ratings where review is not null and review <> ''),
     'avg_rating',                (select round(avg(reader_rating)::numeric, 1) from ratings where reader_rating is not null),
-    'members_without_age_group', (select count(*)::int from family_members where age_group is null),
-    'total_milestones',          (select count(*)::int from milestone_celebrations)
+    'members_without_age_group', v_members_without_age_group,
+    'total_milestones',          v_total_milestones
   );
 end;
 $$;

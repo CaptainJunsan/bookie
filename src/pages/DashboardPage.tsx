@@ -152,7 +152,7 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto px-4 py-6 pb-24 space-y-8">
+    <div className="max-w-2xl lg:max-w-4xl mx-auto px-4 lg:px-8 py-6 pb-24 lg:pb-8 space-y-8">
       {/* Welcome */}
       <div>
         <p className="text-sm text-muted-foreground font-medium">{greeting()},</p>
@@ -320,7 +320,7 @@ export default function DashboardPage() {
             <h2 className="font-display font-bold text-lg">Recent books</h2>
             <button onClick={() => navigate("/books")} className="text-sm text-primary font-semibold hover:underline">See all</button>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             {recentBooks.slice(0, 4).map(({ book, rating }) => (
               <button
                 key={book.id}

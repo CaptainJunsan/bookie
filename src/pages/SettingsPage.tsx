@@ -302,7 +302,7 @@ export default function SettingsPage() {
   // ── RENDER ──────────────────────────────────────────────────────────────
 
   return (
-    <div className="max-w-2xl mx-auto px-4 py-6 pb-24 space-y-6">
+    <div className="max-w-2xl lg:max-w-3xl mx-auto px-4 lg:px-8 py-6 pb-24 lg:pb-8 space-y-6">
       <h1 className="font-display text-2xl font-bold">Settings</h1>
 
       {/* Age group notification banner */}
