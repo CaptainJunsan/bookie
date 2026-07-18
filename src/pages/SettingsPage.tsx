@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router";
 import {
   LogOut, Plus, Trash2, Copy, Check, MessageCircle, UserPlus,
-  Pencil, X, ShieldCheck, KeyRound,
+  Pencil, X, ShieldCheck, KeyRound, Share2, Loader2, Heart,
 } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../contexts/AuthContext";
@@ -10,6 +10,9 @@ import EmojiPicker from "../components/EmojiPicker";
 import { MEMBER_COLORS, CHILD_ROLES, PARENT_ROLES, genderFromRole } from "../lib/types";
 import type { Invite, FamilyMember } from "../lib/types";
 import { toast } from "sonner";
+import {
+  generateAppShareCard, shareWithOS, whatsappAppMessage, APP_URL,
+} from "../lib/shareCard";
 
 export default function SettingsPage() {
   const { user, member, family, allMembers, signOut, refreshFamily } = useAuth();
@@ -24,6 +27,9 @@ export default function SettingsPage() {
   const [showAddChild, setShowAddChild] = useState(false);
   const [showInvite, setShowInvite] = useState(false);
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
+
+  // Share Bookie
+  const [sharingApp, setSharingApp] = useState(false);
 
   // Edit self
   const [editNickname, setEditNickname] = useState(member?.nickname ?? "");
@@ -243,6 +249,28 @@ export default function SettingsPage() {
 
   function shareViaWhatsApp(invite: Invite) {
     window.open(`https://wa.me/?text=${encodeURIComponent(buildInviteMessage(invite))}`, "_blank");
+  }
+
+  async function handleShareApp() {
+    setSharingApp(true);
+    try {
+      const blob = await generateAppShareCard();
+      const result = await shareWithOS({
+        blob,
+        fileName: "bookie.png",
+        title: "Bookie — Family Reading Tracker",
+        text: whatsappAppMessage(),
+        url: APP_URL,
+      });
+      if (result === "fallback") {
+        await navigator.clipboard.writeText(`${whatsappAppMessage()}`);
+        toast.success("Message copied to clipboard!");
+      }
+    } catch {
+      toast.error("Could not generate share card");
+    } finally {
+      setSharingApp(false);
+    }
   }
 
   async function handleSignOut() {
@@ -569,6 +597,44 @@ export default function SettingsPage() {
           )}
         </section>
       )}
+
+      {/* Share Bookie */}
+      <section className="bg-card border border-border rounded-2xl p-4 space-y-3">
+        <div className="flex items-center gap-2">
+          <Heart size={16} className="text-rose-400" />
+          <h2 className="font-display font-bold text-lg">Share Bookie</h2>
+        </div>
+        <p className="text-sm text-muted-foreground">
+          Know a family who loves reading? Share Bookie with them — it generates a beautiful branded card to send.
+        </p>
+        <div className="flex gap-3">
+          <button
+            onClick={handleShareApp}
+            disabled={sharingApp}
+            className="flex-1 py-3 rounded-xl bg-primary text-primary-foreground font-bold text-sm flex items-center justify-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-60"
+          >
+            {sharingApp ? <Loader2 size={16} className="animate-spin" /> : <Share2 size={16} />}
+            {sharingApp ? "Generating…" : "Share with friends"}
+          </button>
+          <a
+            href={`https://wa.me/?text=${encodeURIComponent(whatsappAppMessage())}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-2 px-4 py-3 rounded-xl bg-[#25D366] text-white font-bold text-sm hover:opacity-90 transition-opacity"
+          >
+            <MessageCircle size={16} /> WhatsApp
+          </a>
+        </div>
+        <button
+          onClick={async () => {
+            await navigator.clipboard.writeText(APP_URL);
+            toast.success("Link copied!");
+          }}
+          className="w-full py-2 rounded-xl border border-border text-xs font-mono text-muted-foreground hover:border-primary hover:text-primary transition-colors flex items-center justify-center gap-2"
+        >
+          <Copy size={12} /> {APP_URL}
+        </button>
+      </section>
 
       {/* Account */}
       <section className="bg-card border border-border rounded-2xl p-4">
