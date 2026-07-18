@@ -37,6 +37,7 @@ export default function SettingsPage() {
   const [editNickname, setEditNickname] = useState(member?.nickname ?? "");
   const [editAvatar, setEditAvatar] = useState(member?.avatar_emoji ?? "📚");
   const [editRole, setEditRole] = useState(member?.role ?? "");
+  const [editAgeGroup, setEditAgeGroup] = useState(member?.age_group ?? "");
   const [savingProfile, setSavingProfile] = useState(false);
 
   // Add child
@@ -53,6 +54,7 @@ export default function SettingsPage() {
   const [editChildGender, setEditChildGender] = useState("");
   const [editChildAvatar, setEditChildAvatar] = useState("🧒");
   const [editChildMode, setEditChildMode] = useState(false);
+  const [editChildAgeGroup, setEditChildAgeGroup] = useState("");
   const [savingEditChild, setSavingEditChild] = useState(false);
 
   // Child login invite
@@ -96,6 +98,7 @@ export default function SettingsPage() {
       nickname: editNickname.trim(),
       avatar_emoji: editAvatar,
       role: editRole,
+      age_group: editAgeGroup || null,
     }).eq("id", member.id);
     await refreshFamily();
     toast.success("Profile updated!");
@@ -110,6 +113,7 @@ export default function SettingsPage() {
     setEditChildGender(m.gender || "");
     setEditChildAvatar(m.avatar_emoji);
     setEditChildMode(m.is_child_mode ?? false);
+    setEditChildAgeGroup(m.age_group || "");
     setGrantingLoginFor(null);
     setChildLoginEmail("");
   }
@@ -123,6 +127,7 @@ export default function SettingsPage() {
       gender: editChildGender || null,
       avatar_emoji: editChildAvatar,
       is_child_mode: editChildMode,
+      age_group: editChildAgeGroup || null,
     }).eq("id", editingChildId);
     if (error) { toast.error("Could not save"); setSavingEditChild(false); return; }
     await refreshFamily();
@@ -302,18 +307,17 @@ export default function SettingsPage() {
 
       {/* Age group notification banner */}
       {showAgeNotice && (
-        <button
-          onClick={() => ageGroupRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
-          className="w-full text-left bg-amber-50 border border-amber-200 rounded-2xl p-3 flex items-start gap-3"
-        >
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 flex items-start gap-3">
           <span className="text-xl mt-0.5 flex-shrink-0">📊</span>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-bold text-amber-800">Set age groups for your readers</p>
             <p className="text-xs text-amber-700 mt-0.5">
-              Help us understand our audience — {membersWithoutAgeGroup.length} profile{membersWithoutAgeGroup.length !== 1 ? "s need" : " needs"} an age group. Tap to set.
+              Help us understand our audience —{" "}
+              {membersWithoutAgeGroup.map((m) => m.nickname).join(", ")}{" "}
+              {membersWithoutAgeGroup.length === 1 ? "needs" : "need"} an age group. Edit each profile below to set it.
             </p>
           </div>
-        </button>
+        </div>
       )}
 
       {/* My profile */}
@@ -336,6 +340,7 @@ export default function SettingsPage() {
                 setEditNickname(member?.nickname ?? "");
                 setEditAvatar(member?.avatar_emoji ?? "📚");
                 setEditRole(member?.role ?? "");
+                setEditAgeGroup(member?.age_group ?? "");
               }
               setEditingProfile((v) => !v);
             }}
@@ -375,6 +380,27 @@ export default function SettingsPage() {
                     {r}
                   </button>
                 ))}
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold mb-2 text-muted-foreground uppercase tracking-wide">Age Group</label>
+              <div className="flex flex-wrap gap-1.5">
+                {[...AGE_GROUPS].map((ag) => {
+                  const selected = editAgeGroup === ag;
+                  const color = AGE_GROUP_COLORS[ag];
+                  return (
+                    <button
+                      key={ag}
+                      type="button"
+                      onClick={() => setEditAgeGroup(selected ? "" : ag)}
+                      className="px-2.5 py-1 rounded-lg text-xs font-semibold border transition-all"
+                      style={selected ? { background: color + "22", borderColor: color + "88", color } : {}}
+                      {...(!selected ? { className: "px-2.5 py-1 rounded-lg text-xs font-semibold border bg-muted border-transparent text-muted-foreground hover:border-primary/40 transition-all" } : {})}
+                    >
+                      {AGE_GROUP_LABELS[ag]}
+                    </button>
+                  );
+                })}
               </div>
             </div>
             <div>
@@ -472,6 +498,27 @@ export default function SettingsPage() {
                         {g === "Male" ? "♂ Male" : "♀ Female"}
                       </button>
                     ))}
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold mb-1.5 text-muted-foreground uppercase tracking-wide">Age Group</label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {[...AGE_GROUPS].map((ag) => {
+                        const selected = editChildAgeGroup === ag;
+                        const color = AGE_GROUP_COLORS[ag];
+                        return (
+                          <button
+                            key={ag}
+                            type="button"
+                            onClick={() => setEditChildAgeGroup(selected ? "" : ag)}
+                            className={`px-2 py-1 rounded-lg text-[11px] font-semibold border transition-all ${selected ? "" : "bg-muted border-transparent text-muted-foreground"}`}
+                            style={selected ? { background: color + "22", borderColor: color + "88", color } : {}}
+                          >
+                            {AGE_GROUP_LABELS[ag]}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
 
                   <div>
@@ -704,61 +751,6 @@ export default function SettingsPage() {
         >
           <Copy size={12} /> {APP_URL}
         </button>
-      </section>
-
-      {/* Reader Age Groups */}
-      <section
-        ref={(el) => { ageGroupRef.current = el; }}
-        className="bg-card border border-border rounded-2xl overflow-hidden"
-      >
-        <div className="px-4 pt-4 pb-3 border-b border-border">
-          <h2 className="font-display font-bold text-lg">Reader Age Groups</h2>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Help us understand our audience. All data is anonymous and used only for reporting.
-          </p>
-        </div>
-        <div className="divide-y divide-border">
-          {ageGroupTargets.map((m) => (
-            <div key={m.id} className="px-4 py-3">
-              <div className="flex items-center gap-2 mb-2.5">
-                <span className="text-xl">{m.avatar_emoji}</span>
-                <div>
-                  <p className="text-sm font-bold leading-tight">{m.nickname}</p>
-                  <p className="text-[11px] text-muted-foreground">{m.role}</p>
-                </div>
-                {!m.age_group && (
-                  <span className="ml-auto text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">
-                    Not set
-                  </span>
-                )}
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                {[...AGE_GROUPS].map((ag) => {
-                  const selected = m.age_group === ag;
-                  const color = AGE_GROUP_COLORS[ag];
-                  return (
-                    <button
-                      key={ag}
-                      onClick={() => saveAgeGroup(m.id, ag)}
-                      className="px-2 py-1 rounded-lg text-[11px] font-bold border transition-all"
-                      style={selected ? {
-                        background: color + "22",
-                        borderColor: color + "88",
-                        color,
-                      } : {
-                        background: "transparent",
-                        borderColor: "var(--border)",
-                        color: "var(--muted-foreground)",
-                      }}
-                    >
-                      {AGE_GROUP_LABELS[ag]}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
-        </div>
       </section>
 
       {/* Super Admin switcher */}

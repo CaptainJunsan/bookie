@@ -365,6 +365,40 @@ begin
 end;
 $$;
 
+-- Per-family stats for admin families deep-dive
+create or replace function public.admin_families_report()
+returns jsonb language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_super_admin() then
+    raise exception 'unauthorized';
+  end if;
+  return (
+    select coalesce(jsonb_agg(row_data), '[]'::jsonb)
+    from (
+      select jsonb_build_object(
+        'id',            f.id,
+        'name',          f.name,
+        'created_at',    f.created_at,
+        'member_count',  count(distinct fm.id)::int,
+        'child_count',   count(distinct fm.id) filter (where fm.is_child)::int,
+        'book_count',    count(distinct b.id)::int,
+        'books_finished',count(rp.id) filter (where rp.status = 'finished')::int,
+        'pages_read',    coalesce(sum(coalesce(bk.page_count, rp.current_page)) filter (where rp.status = 'finished'), 0)::int,
+        'avg_rating',    round(avg(r.reader_rating)::numeric, 1)
+      ) as row_data
+      from families f
+      left join family_members fm on fm.family_id = f.id
+      left join books b on b.family_id = f.id
+      left join reading_progress rp on rp.member_id = fm.id
+      left join books bk on bk.id = rp.book_id
+      left join ratings r on r.book_id = bk.id
+      group by f.id
+      order by count(distinct b.id) desc, f.created_at desc
+    ) sub
+  );
+end;
+$$;
+
 -- Reading activity broken down by reader age group
 create or replace function public.admin_age_breakdown()
 returns jsonb language plpgsql security definer set search_path = public as $$

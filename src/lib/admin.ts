@@ -82,6 +82,29 @@ export async function fetchTopAuthors(): Promise<AuthorStat[]> {
   }
 }
 
+export interface FamilyStat {
+  id: string;
+  name: string;
+  created_at: string;
+  member_count: number;
+  child_count: number;
+  book_count: number;
+  books_finished: number;
+  pages_read: number;
+  avg_rating: number | null;
+}
+
+export async function fetchFamiliesReport(): Promise<FamilyStat[]> {
+  try {
+    const { data, error } = await supabase.rpc("admin_families_report");
+    if (error) throw error;
+    return (data as FamilyStat[]) ?? [];
+  } catch (e) {
+    console.error("admin_families_report:", e);
+    return [];
+  }
+}
+
 export async function fetchAgeBreakdown(): Promise<AgeGroupStat[]> {
   try {
     const { data, error } = await supabase.rpc("admin_age_breakdown");
