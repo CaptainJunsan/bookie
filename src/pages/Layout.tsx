@@ -4,15 +4,20 @@ import { useAuth } from "../contexts/AuthContext";
 import { cn } from "../app/components/ui/utils";
 
 export default function Layout() {
-  const { user, family, member } = useAuth();
+  const { user, family, member, allMembers } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
+
+  const isAdminRoute = location.pathname.startsWith("/admin");
 
   const isAppRoute =
     user &&
     family &&
+    !isAdminRoute &&
     !["/", "/auth", "/onboarding"].includes(location.pathname) &&
     !location.pathname.startsWith("/invite");
+
+  const missingAgeGroups = allMembers.some((m) => !m.age_group);
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -58,7 +63,7 @@ export default function Layout() {
 
             {/* Right side */}
             <NavItem to="/search" icon={<Search size={20} />} label="Search" />
-            <NavItem to="/settings" icon={<Settings size={20} />} label="Settings" />
+            <NavItem to="/settings" icon={<Settings size={20} />} label="Settings" badge={missingAgeGroups} />
           </div>
         </nav>
       )}
@@ -66,7 +71,7 @@ export default function Layout() {
   );
 }
 
-function NavItem({ to, icon, label }: { to: string; icon: React.ReactNode; label: string }) {
+function NavItem({ to, icon, label, badge }: { to: string; icon: React.ReactNode; label: string; badge?: boolean }) {
   const location = useLocation();
   const isActive = location.pathname === to || location.pathname.startsWith(to + "/");
 
@@ -74,11 +79,16 @@ function NavItem({ to, icon, label }: { to: string; icon: React.ReactNode; label
     <NavLink
       to={to}
       className={cn(
-        "flex flex-col items-center gap-0.5 px-3 py-1 rounded-xl transition-colors min-w-[52px]",
+        "flex flex-col items-center gap-0.5 px-3 py-1 rounded-xl transition-colors min-w-[52px] relative",
         isActive ? "text-primary" : "text-muted-foreground hover:text-foreground"
       )}
     >
-      {icon}
+      <span className="relative">
+        {icon}
+        {badge && (
+          <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-amber-400 border border-card" />
+        )}
+      </span>
       <span className="text-[10px] font-semibold">{label}</span>
     </NavLink>
   );

@@ -231,3 +231,164 @@ create policy "Insert family milestones" on public.milestone_celebrations for in
       where family_id = public.get_my_family_id()
     )
   );
+
+-- ============================================================
+-- AGE GROUPS
+-- ============================================================
+
+alter table public.family_members
+  add column if not exists age_group text;
+
+-- ============================================================
+-- SUPER ADMIN
+-- Run this once to register yourself as super admin:
+--   insert into public.super_admins (user_id)
+--   values ((select id from auth.users where email = 'your@email.com'));
+-- ============================================================
+
+create table if not exists public.super_admins (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users(id) on delete cascade unique not null,
+  created_at timestamptz default now() not null
+);
+
+-- Security: only accessible via SECURITY DEFINER functions below
+alter table public.super_admins enable row level security;
+
+-- Check if caller is super admin (used internally by other admin RPCs)
+create or replace function public.is_super_admin()
+returns boolean language sql security definer set search_path = public as $$
+  select exists(select 1 from public.super_admins where user_id = auth.uid())
+$$;
+
+-- Overview stats: all-time counts across entire platform
+create or replace function public.admin_overview_stats()
+returns jsonb language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_super_admin() then
+    raise exception 'unauthorized';
+  end if;
+  return jsonb_build_object(
+    'total_families',            (select count(*)::int from families),
+    'total_members',             (select count(*)::int from family_members),
+    'total_children',            (select count(*)::int from family_members where is_child),
+    'total_books',               (select count(distinct id)::int from books),
+    'total_finished',            (select count(*)::int from reading_progress where status = 'finished'),
+    'total_reading',             (select count(*)::int from reading_progress where status = 'reading'),
+    'total_want_to_read',        (select count(*)::int from reading_progress where status = 'want_to_read'),
+    'pages_read',                (
+      select coalesce(sum(coalesce(b.page_count, rp.current_page)), 0)::bigint
+      from reading_progress rp join books b on b.id = rp.book_id
+      where rp.status = 'finished'
+    ),
+    'total_reviews',             (select count(*)::int from ratings where review is not null and review <> ''),
+    'avg_rating',                (select round(avg(reader_rating)::numeric, 1) from ratings where reader_rating is not null),
+    'members_without_age_group', (select count(*)::int from family_members where age_group is null),
+    'total_milestones',          (select count(*)::int from milestone_celebrations)
+  );
+end;
+$$;
+
+-- Per-book stats aggregated across all families
+create or replace function public.admin_books_report()
+returns jsonb language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_super_admin() then
+    raise exception 'unauthorized';
+  end if;
+  return (
+    select coalesce(jsonb_agg(row_data), '[]'::jsonb)
+    from (
+      select jsonb_build_object(
+        'id',                b.id,
+        'title',             b.title,
+        'author',            coalesce(b.author, 'Unknown'),
+        'cover_url',         b.cover_url,
+        'page_count',        b.page_count,
+        'finished_count',    count(rp.id) filter (where rp.status = 'finished'),
+        'reading_count',     count(rp.id) filter (where rp.status = 'reading'),
+        'want_to_read_count',count(rp.id) filter (where rp.status = 'want_to_read'),
+        'total_interactions',count(rp.id),
+        'avg_rating',        round(avg(r.reader_rating)::numeric, 1),
+        'review_count',      count(r.id) filter (where r.review is not null and r.review <> ''),
+        'age_groups',        (
+          select coalesce(jsonb_agg(distinct fm2.age_group) filter (where fm2.age_group is not null), '[]'::jsonb)
+          from reading_progress rp2
+          join family_members fm2 on fm2.id = rp2.member_id
+          where rp2.book_id = b.id
+        ),
+        'latest_activity_at', max(rp.updated_at)
+      ) as row_data
+      from books b
+      left join reading_progress rp on rp.book_id = b.id
+      left join ratings r on r.book_id = b.id
+      group by b.id
+      order by count(rp.id) filter (where rp.status = 'finished') desc nulls last, b.title
+    ) sub
+  );
+end;
+$$;
+
+-- Top authors ranked by finishes across all families
+create or replace function public.admin_top_authors()
+returns jsonb language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_super_admin() then
+    raise exception 'unauthorized';
+  end if;
+  return (
+    select coalesce(jsonb_agg(row_data), '[]'::jsonb)
+    from (
+      select jsonb_build_object(
+        'author',        b.author,
+        'book_count',    count(distinct b.id)::int,
+        'total_reads',   count(rp.id)::int,
+        'finished_count',count(rp.id) filter (where rp.status = 'finished')::int,
+        'avg_rating',    round(avg(r.reader_rating)::numeric, 1),
+        'age_groups',    (
+          select coalesce(jsonb_agg(distinct fm.age_group) filter (where fm.age_group is not null), '[]'::jsonb)
+          from reading_progress rp2
+          join books b2 on b2.id = rp2.book_id
+          join family_members fm on fm.id = rp2.member_id
+          where b2.author = b.author
+        )
+      ) as row_data
+      from books b
+      left join reading_progress rp on rp.book_id = b.id
+      left join ratings r on r.book_id = b.id
+      where b.author is not null and b.author <> ''
+      group by b.author
+      order by count(rp.id) filter (where rp.status = 'finished') desc nulls last, count(distinct b.id) desc
+      limit 25
+    ) sub
+  );
+end;
+$$;
+
+-- Reading activity broken down by reader age group
+create or replace function public.admin_age_breakdown()
+returns jsonb language plpgsql security definer set search_path = public as $$
+begin
+  if not public.is_super_admin() then
+    raise exception 'unauthorized';
+  end if;
+  return (
+    select coalesce(jsonb_agg(row_data), '[]'::jsonb)
+    from (
+      select jsonb_build_object(
+        'age_group',        coalesce(fm.age_group, 'Unknown'),
+        'member_count',     count(distinct fm.id)::int,
+        'books_finished',   count(rp.id) filter (where rp.status = 'finished')::int,
+        'books_reading',    count(rp.id) filter (where rp.status = 'reading')::int,
+        'books_want_to_read',count(rp.id) filter (where rp.status = 'want_to_read')::int,
+        'pages_read',       coalesce(sum(coalesce(b.page_count, rp.current_page)) filter (where rp.status = 'finished'), 0)::int
+      ) as row_data
+      from family_members fm
+      left join reading_progress rp on rp.member_id = fm.id
+      left join books b on b.id = rp.book_id
+      group by fm.age_group
+      order by count(rp.id) filter (where rp.status = 'finished') desc nulls last
+    ) sub
+  );
+end;
+$$;

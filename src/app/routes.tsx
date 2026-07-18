@@ -11,6 +11,7 @@ import BookDetailPage from "../pages/BookDetailPage";
 import AddBookPage from "../pages/AddBookPage";
 import SearchPage from "../pages/SearchPage";
 import SettingsPage from "../pages/SettingsPage";
+import AdminDashboard from "../pages/AdminDashboard";
 
 async function requireAuth() {
   const { data: { session } } = await supabase.auth.getSession();
@@ -66,6 +67,7 @@ export const router = createBrowserRouter([
       { path: "books/:id", Component: BookDetailPage, loader: requireAuthWithFamily },
       { path: "search", Component: SearchPage, loader: requireAuthWithFamily },
       { path: "settings", Component: SettingsPage, loader: requireAuthWithFamily },
+      { path: "admin", Component: AdminDashboard, loader: requireAuthWithFamily },
     ],
   },
 ]);

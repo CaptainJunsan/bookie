@@ -16,8 +16,40 @@ export interface FamilyMember {
   is_child_mode: boolean;
   color: string;
   gender: string | null;
+  age_group: string | null;
   created_at: string;
 }
+
+export const AGE_GROUPS = [
+  "0-2", "3-5", "6-9", "10-15", "16-21", "22-35", "36-65", "66+", "prefer_not_to_say",
+] as const;
+
+export type AgeGroup = (typeof AGE_GROUPS)[number];
+
+export const AGE_GROUP_LABELS: Record<string, string> = {
+  "0-2": "0–2",
+  "3-5": "3–5",
+  "6-9": "6–9",
+  "10-15": "10–15",
+  "16-21": "16–21",
+  "22-35": "22–35",
+  "36-65": "36–65",
+  "66+": "66+",
+  "prefer_not_to_say": "Prefer not to say",
+};
+
+export const AGE_GROUP_COLORS: Record<string, string> = {
+  "0-2": "#F4A0B0",
+  "3-5": "#F4A562",
+  "6-9": "#F2C94C",
+  "10-15": "#6BBEA0",
+  "16-21": "#4EA8C8",
+  "22-35": "#5B8EDA",
+  "36-65": "#7C6BD6",
+  "66+": "#C47AC8",
+  "prefer_not_to_say": "#9AA5B4",
+  "Unknown": "#CBD5E0",
+};
 
 export interface Invite {
   id: string;

@@ -10,6 +10,7 @@ interface AuthContextType {
   family: Family | null;
   allMembers: FamilyMember[];
   loading: boolean;
+  isAdmin: boolean;
   signOut: () => Promise<void>;
   refreshFamily: () => Promise<void>;
 }
@@ -23,6 +24,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [family, setFamily] = useState<Family | null>(null);
   const [allMembers, setAllMembers] = useState<FamilyMember[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   async function loadFamilyData(userId: string) {
     const { data: memberData } = await supabase
@@ -40,13 +42,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     setMember(memberData as FamilyMember);
 
-    const [familyRes, membersRes] = await Promise.all([
+    const [familyRes, membersRes, adminRes] = await Promise.all([
       supabase.from("families").select("*").eq("id", memberData.family_id).single(),
       supabase.from("family_members").select("*").eq("family_id", memberData.family_id).order("created_at"),
+      supabase.rpc("is_super_admin"),
     ]);
 
     setFamily(familyRes.data as Family | null);
     setAllMembers((membersRes.data as FamilyMember[]) || []);
+    setIsAdmin(adminRes.data === true);
   }
 
   useEffect(() => {
@@ -80,6 +84,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setMember(null);
     setFamily(null);
     setAllMembers([]);
+    setIsAdmin(false);
   }
 
   async function refreshFamily() {
@@ -87,7 +92,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, session, member, family, allMembers, loading, signOut, refreshFamily }}>
+    <AuthContext.Provider value={{ user, session, member, family, allMembers, loading, isAdmin, signOut, refreshFamily }}>
       {children}
     </AuthContext.Provider>
   );

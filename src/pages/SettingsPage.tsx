@@ -1,13 +1,13 @@
-import { useState, useEffect } from "react";
+import { useRef, useState, useEffect } from "react";
 import { useNavigate } from "react-router";
 import {
   LogOut, Plus, Trash2, Copy, Check, MessageCircle, UserPlus,
-  Pencil, X, ShieldCheck, KeyRound, Share2, Loader2, Heart,
+  Pencil, X, ShieldCheck, KeyRound, Share2, Loader2, Heart, BarChart2,
 } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../contexts/AuthContext";
 import EmojiPicker from "../components/EmojiPicker";
-import { MEMBER_COLORS, CHILD_ROLES, PARENT_ROLES, genderFromRole } from "../lib/types";
+import { MEMBER_COLORS, CHILD_ROLES, PARENT_ROLES, genderFromRole, AGE_GROUPS, AGE_GROUP_LABELS, AGE_GROUP_COLORS } from "../lib/types";
 import type { Invite, FamilyMember } from "../lib/types";
 import { toast } from "sonner";
 import {
@@ -15,8 +15,9 @@ import {
 } from "../lib/shareCard";
 
 export default function SettingsPage() {
-  const { user, member, family, allMembers, signOut, refreshFamily } = useAuth();
+  const { user, member, family, allMembers, isAdmin, signOut, refreshFamily } = useAuth();
   const navigate = useNavigate();
+  const ageGroupRef = useRef<HTMLElement | null>(null);
 
   const isParent = member && !member.is_child;
 
@@ -275,6 +276,19 @@ export default function SettingsPage() {
     }
   }
 
+  async function saveAgeGroup(memberId: string, ageGroup: string) {
+    await supabase.from("family_members").update({ age_group: ageGroup }).eq("id", memberId);
+    await refreshFamily();
+  }
+
+  const membersWithoutAgeGroup = allMembers.filter((m) => !m.age_group);
+  const showAgeNotice = membersWithoutAgeGroup.length > 0;
+
+  // Which members the current user can set age group for
+  const ageGroupTargets = isAdmin || !member?.is_child
+    ? allMembers
+    : allMembers.filter((m) => m.id === member?.id);
+
   async function handleSignOut() {
     await signOut();
     navigate("/");
@@ -285,6 +299,22 @@ export default function SettingsPage() {
   return (
     <div className="max-w-2xl mx-auto px-4 py-6 pb-24 space-y-6">
       <h1 className="font-display text-2xl font-bold">Settings</h1>
+
+      {/* Age group notification banner */}
+      {showAgeNotice && (
+        <button
+          onClick={() => ageGroupRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
+          className="w-full text-left bg-amber-50 border border-amber-200 rounded-2xl p-3 flex items-start gap-3"
+        >
+          <span className="text-xl mt-0.5 flex-shrink-0">📊</span>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-bold text-amber-800">Set age groups for your readers</p>
+            <p className="text-xs text-amber-700 mt-0.5">
+              Help us understand our audience — {membersWithoutAgeGroup.length} profile{membersWithoutAgeGroup.length !== 1 ? "s need" : " needs"} an age group. Tap to set.
+            </p>
+          </div>
+        </button>
+      )}
 
       {/* My profile */}
       <section className="bg-card border border-border rounded-2xl overflow-hidden">
@@ -675,6 +705,82 @@ export default function SettingsPage() {
           <Copy size={12} /> {APP_URL}
         </button>
       </section>
+
+      {/* Reader Age Groups */}
+      <section
+        ref={(el) => { ageGroupRef.current = el; }}
+        className="bg-card border border-border rounded-2xl overflow-hidden"
+      >
+        <div className="px-4 pt-4 pb-3 border-b border-border">
+          <h2 className="font-display font-bold text-lg">Reader Age Groups</h2>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Help us understand our audience. All data is anonymous and used only for reporting.
+          </p>
+        </div>
+        <div className="divide-y divide-border">
+          {ageGroupTargets.map((m) => (
+            <div key={m.id} className="px-4 py-3">
+              <div className="flex items-center gap-2 mb-2.5">
+                <span className="text-xl">{m.avatar_emoji}</span>
+                <div>
+                  <p className="text-sm font-bold leading-tight">{m.nickname}</p>
+                  <p className="text-[11px] text-muted-foreground">{m.role}</p>
+                </div>
+                {!m.age_group && (
+                  <span className="ml-auto text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">
+                    Not set
+                  </span>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {[...AGE_GROUPS].map((ag) => {
+                  const selected = m.age_group === ag;
+                  const color = AGE_GROUP_COLORS[ag];
+                  return (
+                    <button
+                      key={ag}
+                      onClick={() => saveAgeGroup(m.id, ag)}
+                      className="px-2 py-1 rounded-lg text-[11px] font-bold border transition-all"
+                      style={selected ? {
+                        background: color + "22",
+                        borderColor: color + "88",
+                        color,
+                      } : {
+                        background: "transparent",
+                        borderColor: "var(--border)",
+                        color: "var(--muted-foreground)",
+                      }}
+                    >
+                      {AGE_GROUP_LABELS[ag]}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Super Admin switcher */}
+      {isAdmin && (
+        <section className="bg-foreground text-background rounded-2xl p-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <BarChart2 size={18} />
+              <div>
+                <p className="font-display font-bold text-sm">Super Admin</p>
+                <p className="text-[11px] text-background/60 mt-0.5">Platform-wide analytics and reporting</p>
+              </div>
+            </div>
+            <button
+              onClick={() => navigate("/admin")}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white/15 hover:bg-white/25 transition-colors text-xs font-bold"
+            >
+              Open admin view →
+            </button>
+          </div>
+        </section>
+      )}
 
       {/* Account */}
       <section className="bg-card border border-border rounded-2xl p-4">
