@@ -1,9 +1,17 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { BookOpen, PlusCircle, TrendingUp } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../contexts/AuthContext";
 import ReaderProfileSheet from "../components/ReaderProfileSheet";
+import MilestoneModal from "../components/MilestoneModal";
+import {
+  computeMemberStats,
+  computePendingMilestones,
+  fetchCelebratedMilestones,
+  markMilestoneCelebrated,
+  type PendingMilestone,
+} from "../lib/milestones";
 import type { Book, ReadingProgress, Rating, FamilyMember } from "../lib/types";
 
 interface BookWithData {
@@ -33,9 +41,12 @@ export default function DashboardPage() {
   });
   const [loading, setLoading] = useState(true);
   const [selectedReader, setSelectedReader] = useState<FamilyMember | null>(null);
+  const [milestoneQueue, setMilestoneQueue] = useState<PendingMilestone[]>([]);
+  const milestoneCheckedRef = useRef(false);
 
   useEffect(() => {
     if (!family) return;
+    milestoneCheckedRef.current = false;
     loadData();
   }, [family]);
 
@@ -91,6 +102,38 @@ export default function DashboardPage() {
     setRecentBooks(recent);
     setCurrentlyReading(reading);
     setLoading(false);
+
+    // Milestone check — only once per session load
+    if (!milestoneCheckedRef.current) {
+      milestoneCheckedRef.current = true;
+      checkMilestones(books, progress);
+    }
+  }
+
+  async function checkMilestones(
+    books: Book[],
+    progress: ReadingProgress[]
+  ) {
+    const memberIds = allMembers.map((m) => m.id);
+    const celebratedMap = await fetchCelebratedMilestones(memberIds);
+
+    const statsMap: Record<string, ReturnType<typeof computeMemberStats>> = {};
+    for (const m of allMembers) {
+      statsMap[m.id] = computeMemberStats(m.id, progress, books);
+    }
+
+    const pending = computePendingMilestones(allMembers as FamilyMember[], statsMap, celebratedMap);
+    if (pending.length > 0) {
+      setMilestoneQueue(pending);
+    }
+  }
+
+  function dismissCurrentMilestone() {
+    const current = milestoneQueue[0];
+    if (current) {
+      markMilestoneCelebrated(current.memberId, current.type, current.value);
+    }
+    setMilestoneQueue((q) => q.slice(1));
   }
 
   const greeting = () => {
@@ -318,6 +361,13 @@ export default function DashboardPage() {
         member={selectedReader}
         isBestReader={stats.bestReaders.some((r) => r.id === selectedReader?.id)}
         onClose={() => setSelectedReader(null)}
+      />
+
+      {/* Milestone celebration modal — shows queued milestones one at a time */}
+      <MilestoneModal
+        milestone={milestoneQueue[0] ?? null}
+        viewerMember={member as FamilyMember | undefined}
+        onDismiss={dismissCurrentMilestone}
       />
     </div>
   );

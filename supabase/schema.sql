@@ -200,3 +200,34 @@ create policy "Authenticated uploads" on storage.objects for insert
 
 create policy "Authenticated deletes" on storage.objects for delete
   using (bucket_id = 'book-covers' and auth.role() = 'authenticated');
+
+-- ============================================================
+-- MILESTONE CELEBRATIONS
+-- ============================================================
+
+create table if not exists public.milestone_celebrations (
+  id uuid primary key default gen_random_uuid(),
+  member_id uuid references public.family_members(id) on delete cascade not null,
+  milestone_type text not null check (milestone_type in ('books', 'pages')),
+  milestone_value integer not null,
+  celebrated_at timestamptz default now() not null,
+  unique(member_id, milestone_type, milestone_value)
+);
+
+alter table public.milestone_celebrations enable row level security;
+
+create policy "View family milestones" on public.milestone_celebrations for select
+  using (
+    member_id in (
+      select id from public.family_members
+      where family_id = public.get_my_family_id()
+    )
+  );
+
+create policy "Insert family milestones" on public.milestone_celebrations for insert
+  with check (
+    member_id in (
+      select id from public.family_members
+      where family_id = public.get_my_family_id()
+    )
+  );
