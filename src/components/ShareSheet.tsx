@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Share2, MessageCircle, Copy, X, Check, Loader2 } from "lucide-react";
+import { Share2, Copy, X, Check, Loader2 } from "lucide-react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { toast } from "sonner";
 import type { Book, Rating } from "../lib/types";
@@ -32,7 +32,6 @@ export default function ShareSheet({ book, rating, familyName }: ShareSheetProps
   };
 
   const waMessage = whatsappBookMessage(bookData, bookUrl);
-  const waUrl = `https://wa.me/?text=${encodeURIComponent(waMessage)}`;
 
   async function handleShare() {
     setSharing(true);
@@ -99,12 +98,12 @@ export default function ShareSheet({ book, rating, familyName }: ShareSheetProps
           </div>
 
           {/* Share actions */}
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 gap-3">
             {/* Native OS share — generates bespoke card image */}
             <button
               onClick={handleShare}
               disabled={sharing}
-              className="flex flex-col items-center gap-1.5 py-4 rounded-xl bg-primary text-primary-foreground font-semibold text-xs hover:opacity-90 transition-opacity disabled:opacity-60 col-span-1"
+              className="flex flex-col items-center gap-1.5 py-4 rounded-xl bg-primary text-primary-foreground font-semibold text-xs hover:opacity-90 transition-opacity disabled:opacity-60"
             >
               {sharing
                 ? <Loader2 size={20} className="animate-spin" />
@@ -112,17 +111,6 @@ export default function ShareSheet({ book, rating, familyName }: ShareSheetProps
               }
               {sharing ? "Generating…" : "Share"}
             </button>
-
-            {/* WhatsApp */}
-            <a
-              href={waUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex flex-col items-center gap-1.5 py-4 rounded-xl bg-[#25D366] text-white font-semibold text-xs hover:opacity-90 transition-opacity"
-            >
-              <MessageCircle size={20} />
-              WhatsApp
-            </a>
 
             {/* Copy link */}
             <button

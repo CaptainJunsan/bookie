@@ -202,7 +202,7 @@ export default function SearchPage() {
     : false;
 
   return (
-    <div className="max-w-2xl lg:max-w-4xl mx-auto px-4 lg:px-8 py-6 pb-24 lg:pb-8">
+    <div className="max-w-2xl lg:max-w-none mx-auto lg:mx-0 px-4 lg:px-10 py-6 pb-24 lg:pb-10">
       <h1 className="font-display text-2xl font-bold mb-5">Search Books</h1>
 
       {/* Search bar */}

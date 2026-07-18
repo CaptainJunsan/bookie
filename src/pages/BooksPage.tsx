@@ -64,7 +64,7 @@ export default function BooksPage() {
   ];
 
   return (
-    <div className="max-w-2xl lg:max-w-5xl mx-auto px-4 lg:px-8 py-6 pb-24 lg:pb-8">
+    <div className="max-w-2xl lg:max-w-none px-4 lg:px-10 py-6 pb-24 lg:pb-10 mx-auto lg:mx-0">
       <div className="flex items-center justify-between mb-5">
         <h1 className="font-display text-2xl font-bold">Our Library</h1>
         <button

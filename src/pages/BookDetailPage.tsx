@@ -230,7 +230,7 @@ export default function BookDetailPage() {
   );
 
   return (
-    <div className="max-w-2xl lg:max-w-3xl mx-auto pb-24 lg:pb-8">
+    <div className="max-w-2xl mx-auto pb-24 lg:pb-10">
       {/* Hero */}
       <div className="relative">
         {book.cover_url ? (

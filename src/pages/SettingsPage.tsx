@@ -1,7 +1,7 @@
 import { useRef, useState, useEffect } from "react";
 import { useNavigate } from "react-router";
 import {
-  LogOut, Plus, Trash2, Copy, Check, MessageCircle, UserPlus,
+  LogOut, Plus, Trash2, Copy, Check, UserPlus,
   Pencil, X, ShieldCheck, KeyRound, Share2, Loader2, Heart, BarChart2,
 } from "lucide-react";
 import { supabase } from "../lib/supabase";
@@ -11,7 +11,7 @@ import { MEMBER_COLORS, CHILD_ROLES, PARENT_ROLES, genderFromRole, AGE_GROUPS, A
 import type { Invite, FamilyMember } from "../lib/types";
 import { toast } from "sonner";
 import {
-  generateAppShareCard, shareWithOS, whatsappAppMessage, APP_URL,
+  generateAppShareCard, shareWithOS, APP_URL,
 } from "../lib/shareCard";
 
 export default function SettingsPage() {
@@ -255,23 +255,20 @@ export default function SettingsPage() {
     setTimeout(() => setCopiedToken(null), 2000);
   }
 
-  function shareViaWhatsApp(invite: Invite) {
-    window.open(`https://wa.me/?text=${encodeURIComponent(buildInviteMessage(invite))}`, "_blank");
-  }
-
   async function handleShareApp() {
     setSharingApp(true);
     try {
       const blob = await generateAppShareCard();
+      const shareText = "📚 Bookie — track your family's reading journey together! Free at bookie-seven-pi.vercel.app";
       const result = await shareWithOS({
         blob,
         fileName: "bookie.png",
         title: "Bookie — Family Reading Tracker",
-        text: whatsappAppMessage(),
+        text: shareText,
         url: APP_URL,
       });
       if (result === "fallback") {
-        await navigator.clipboard.writeText(`${whatsappAppMessage()}`);
+        await navigator.clipboard.writeText(`${shareText}\n\n${APP_URL}`);
         toast.success("Message copied to clipboard!");
       }
     } catch {
@@ -302,7 +299,7 @@ export default function SettingsPage() {
   // ── RENDER ──────────────────────────────────────────────────────────────
 
   return (
-    <div className="max-w-2xl lg:max-w-3xl mx-auto px-4 lg:px-8 py-6 pb-24 lg:pb-8 space-y-6">
+    <div className="max-w-2xl lg:max-w-2xl mx-auto px-4 lg:px-8 py-6 pb-24 lg:pb-10 space-y-6">
       <h1 className="font-display text-2xl font-bold">Settings</h1>
 
       {/* Age group notification banner */}
@@ -689,9 +686,6 @@ export default function SettingsPage() {
                   <button onClick={() => copyText(buildInviteMessage(inv), inv.token + "_msg")} className="flex-1 py-2 rounded-lg bg-card border border-border text-xs font-semibold flex items-center justify-center gap-1 hover:border-primary transition-colors">
                     {isCopiedMsg ? <><Check size={13} className="text-primary" /> Copied!</> : <><Copy size={13} /> Copy message</>}
                   </button>
-                  <button onClick={() => shareViaWhatsApp(inv)} className="flex-1 py-2 rounded-lg bg-[#25D366] text-white text-xs font-semibold flex items-center justify-center gap-1">
-                    <MessageCircle size={13} /> WhatsApp
-                  </button>
                 </div>
               </div>
             );
@@ -724,24 +718,14 @@ export default function SettingsPage() {
         <p className="text-sm text-muted-foreground">
           Know a family who loves reading? Share Bookie with them — it generates a beautiful branded card to send.
         </p>
-        <div className="flex gap-3">
-          <button
+        <button
             onClick={handleShareApp}
             disabled={sharingApp}
-            className="flex-1 py-3 rounded-xl bg-primary text-primary-foreground font-bold text-sm flex items-center justify-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-60"
+            className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-bold text-sm flex items-center justify-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-60"
           >
             {sharingApp ? <Loader2 size={16} className="animate-spin" /> : <Share2 size={16} />}
             {sharingApp ? "Generating…" : "Share with friends"}
           </button>
-          <a
-            href={`https://wa.me/?text=${encodeURIComponent(whatsappAppMessage())}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-2 px-4 py-3 rounded-xl bg-[#25D366] text-white font-bold text-sm hover:opacity-90 transition-opacity"
-          >
-            <MessageCircle size={16} /> WhatsApp
-          </a>
-        </div>
         <button
           onClick={async () => {
             await navigator.clipboard.writeText(APP_URL);

@@ -38,17 +38,16 @@ export default function Layout() {
 
           {/* Nav */}
           <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
+            <NavLink
+              to="/books/add"
+              className="flex items-center gap-3 w-full px-3 py-2.5 rounded-xl bg-primary text-primary-foreground font-semibold text-sm hover:opacity-90 transition-opacity mb-2"
+            >
+              <PlusCircle size={18} />
+              Add new book
+            </NavLink>
+            <div className="border-t border-border my-2" />
             <SideNavItem to="/dashboard" icon={<LayoutDashboard size={18} />} label="Home" />
             <SideNavItem to="/books" icon={<BookMarked size={18} />} label="Library" />
-            <div className="py-1">
-              <NavLink
-                to="/books/add"
-                className="flex items-center gap-3 w-full px-3 py-2.5 rounded-xl bg-primary text-primary-foreground font-semibold text-sm hover:opacity-90 transition-opacity"
-              >
-                <PlusCircle size={18} />
-                Add Book
-              </NavLink>
-            </div>
             <SideNavItem to="/search" icon={<Search size={18} />} label="Search" />
             <SideNavItem to="/settings" icon={<Settings size={18} />} label="Settings" badge={missingAgeGroups} />
           </nav>
