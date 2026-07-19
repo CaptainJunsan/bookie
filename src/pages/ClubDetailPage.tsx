@@ -127,6 +127,9 @@ export default function ClubDetailPage() {
   const [joining, setJoining] = useState(false);
   const [myPendingRequest, setMyPendingRequest] = useState<ClubJoinRequest | null>(null);
 
+  // Reading group membership for the current user's family members
+  const [myReadingGroupIds, setMyReadingGroupIds] = useState<string[]>([]);
+
   const isOwnerOrAdmin = myRole === "owner" || myRole === "admin";
 
   const load = useCallback(async () => {
@@ -154,6 +157,27 @@ export default function ClubDetailPage() {
       // Reading groups
       const { data: rgs } = await supabase.from("reading_groups").select("*").eq("club_id", id).order("created_at");
       setReadingGroups(rgs || []);
+
+      // Which reading groups does the current user belong to?
+      if (rgs && rgs.length) {
+        const myClubMemberIds = rows
+          .filter((r) => myMemberIds.includes(r.family_member_id))
+          .map((r) => r.id);
+        if (myClubMemberIds.length) {
+          const { data: rgm } = await supabase
+            .from("reading_group_members")
+            .select("reading_group_id")
+            .in("club_member_id", myClubMemberIds);
+          const ids = (rgm || []).map((r: { reading_group_id: string }) => r.reading_group_id);
+          setMyReadingGroupIds(ids);
+          // Pre-select the group for "Add book" if the user belongs to exactly one
+          if (ids.length === 1) setAddBookGroupId(ids[0]);
+        } else {
+          setMyReadingGroupIds([]);
+        }
+      } else {
+        setMyReadingGroupIds([]);
+      }
 
       // Join requests (owner/admin sees all pending; others see their own)
       const { data: reqs } = await supabase
@@ -541,6 +565,13 @@ export default function ClubDetailPage() {
   const membersNotInClub = allMembers.filter((m) => !clubMembers.find((cm) => cm.family_member_id === m.id) && !joinRequests.find((r) => r.family_member_id === m.id && r.status === "pending"));
   const currentRead = books.find((b) => b.is_current_read);
 
+  // Owners/admins see all books. Regular members only see:
+  //   • books with no reading group (whole-club books)
+  //   • books belonging to one of their own reading groups
+  const visibleBooks = isOwnerOrAdmin || myReadingGroupIds.length === 0
+    ? books
+    : books.filter((b) => b.reading_group_id === null || myReadingGroupIds.includes(b.reading_group_id));
+
   const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
     { id: "books", label: "Books", icon: <BookOpen size={12} /> },
     { id: "groups", label: "Groups", icon: <Layers size={12} /> },
@@ -714,15 +745,19 @@ export default function ClubDetailPage() {
               </div>
             )}
 
-            {books.length === 0 ? (
+            {visibleBooks.length === 0 ? (
               <div className="text-center py-12">
                 <span className="text-4xl block mb-3">📚</span>
                 <p className="font-semibold text-foreground">No books yet</p>
-                <p className="text-sm text-muted-foreground mt-1">Add the first book to get the club reading!</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  {books.length > 0
+                    ? "No books assigned to your reading group yet."
+                    : "Add the first book to get the club reading!"}
+                </p>
               </div>
             ) : (
               <div className="space-y-3">
-                {books.map((book) => (
+                {visibleBooks.map((book) => (
                   <ClubBookRow key={book.id} book={book}
                     progress={progress.filter((p) => p.club_book_id === book.id)}
                     myMemberIds={myMemberIds} allMembers={allMembers}
