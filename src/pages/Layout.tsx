@@ -1,7 +1,9 @@
 import { Outlet, NavLink, useLocation, useNavigate } from "react-router";
-import { BookMarked, LayoutDashboard, PlusCircle, Settings, Search } from "lucide-react";
+import { BookMarked, LayoutDashboard, PlusCircle, Settings, Search, Users } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import { cn } from "../app/components/ui/utils";
+import { useEffect, useState } from "react";
+import { supabase } from "../lib/supabase";
 
 export default function Layout() {
   const { user, family, member, allMembers } = useAuth();
@@ -18,6 +20,20 @@ export default function Layout() {
     !location.pathname.startsWith("/invite");
 
   const missingAgeGroups = allMembers.some((m) => !m.age_group);
+
+  // Club notification dot — unseen club notifications for any family member
+  const [hasClubNotifs, setHasClubNotifs] = useState(false);
+  useEffect(() => {
+    if (!member || !isAppRoute) return;
+    const memberIds = allMembers.map((m) => m.id);
+    if (!memberIds.length) return;
+    supabase
+      .from("club_notifications")
+      .select("id", { count: "exact", head: true })
+      .in("member_id", memberIds)
+      .eq("seen", false)
+      .then(({ count }) => setHasClubNotifs((count ?? 0) > 0));
+  }, [member, allMembers, location.pathname]);
 
   return (
     <div className="min-h-screen flex flex-col lg:flex-row bg-background">
@@ -49,6 +65,7 @@ export default function Layout() {
             <SideNavItem to="/dashboard" icon={<LayoutDashboard size={18} />} label="Home" />
             <SideNavItem to="/books" icon={<BookMarked size={18} />} label="Library" />
             <SideNavItem to="/search" icon={<Search size={18} />} label="Search" />
+            <SideNavItem to="/clubs" icon={<Users size={18} />} label="Clubs" badge={hasClubNotifs} />
             <SideNavItem to="/settings" icon={<Settings size={18} />} label="Settings" badge={missingAgeGroups} />
           </nav>
 
@@ -110,6 +127,7 @@ export default function Layout() {
             </NavLink>
 
             <NavItem to="/search" icon={<Search size={20} />} label="Search" />
+            <NavItem to="/clubs" icon={<Users size={20} />} label="Clubs" badge={hasClubNotifs} />
             <NavItem to="/settings" icon={<Settings size={20} />} label="Settings" badge={missingAgeGroups} />
           </div>
         </nav>

@@ -137,3 +137,64 @@ export const STATUS_LABELS: Record<ReadingStatus, string> = {
   reading: "Reading",
   finished: "Finished",
 };
+
+// ── Reading Clubs ─────────────────────────────────────────────────────────────
+
+export type ClubRole = "owner" | "admin" | "member";
+
+export interface Club {
+  id: string;
+  name: string;
+  description: string | null;
+  emoji: string;
+  is_public: boolean;
+  invite_token: string;
+  created_by: string | null;
+  created_at: string;
+  // joined via query
+  member_count?: number;
+  my_role?: ClubRole;
+}
+
+export interface ClubMember {
+  id: string;
+  club_id: string;
+  family_member_id: string;
+  role: ClubRole;
+  joined_at: string;
+  // joined via query
+  family_member?: FamilyMember;
+}
+
+export interface ClubBook {
+  id: string;
+  club_id: string;
+  title: string;
+  author: string | null;
+  isbn: string | null;
+  cover_url: string | null;
+  page_count: number | null;
+  added_by: string | null;
+  added_at: string;
+}
+
+export interface ClubReadingProgress {
+  id: string;
+  club_book_id: string;
+  member_id: string;
+  current_page: number;
+  status: ReadingStatus;
+  started_at: string | null;
+  finished_at: string | null;
+  updated_at: string;
+}
+
+export interface ClubNotification {
+  id: string;
+  club_id: string;
+  member_id: string;
+  type: "new_book" | "new_member" | "milestone" | "invite";
+  title: string;
+  seen: boolean;
+  created_at: string;
+}
