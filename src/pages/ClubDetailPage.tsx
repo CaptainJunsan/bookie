@@ -368,8 +368,9 @@ export default function ClubDetailPage() {
         family_member_id: fmId,
         role: "member" as ClubRole,
       }));
-      const { error } = await supabase.from("club_members").upsert(rows, { onConflict: "club_id,family_member_id" });
-      if (error) throw error;
+      const { error } = await supabase.from("club_members").insert(rows);
+      // 23505 = unique_violation: member already in club — treat as success
+      if (error && error.code !== "23505") throw error;
 
       // Notify existing members
       const existingIds = clubMembers.map((cm) => cm.family_member_id);

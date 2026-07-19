@@ -174,8 +174,9 @@ export default function ClubInvitePage() {
       }));
       const { error } = await supabase
         .from("club_members")
-        .upsert(rows, { onConflict: "club_id,family_member_id" });
-      if (error) throw error;
+        .insert(rows);
+      // 23505 = unique_violation: member already in club — treat as success
+      if (error && error.code !== "23505") throw error;
 
       // Notify existing club members
       const { data: existingCm } = await supabase
