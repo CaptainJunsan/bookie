@@ -658,7 +658,7 @@ export default function ClubDetailPage() {
                   <Plus size={16} />
                   Add a book
                 </button>
-                {isOwnerOrAdmin && books.length > 0 && (
+                {isOwnerOrAdmin && (
                   <button
                     onClick={() => setShowGroupReadSheet(true)}
                     className="flex items-center gap-2 px-4 py-3 border-2 border-dashed border-primary/40 rounded-2xl text-sm font-semibold text-primary hover:border-primary hover:bg-primary/5 transition-colors"
@@ -995,6 +995,21 @@ export default function ClubDetailPage() {
             <p className="text-sm text-muted-foreground mb-5">
               Pick the book the whole club will read together. Everyone's progress will be highlighted and tracked collectively.
             </p>
+            {books.length === 0 ? (
+              <div className="text-center py-8">
+                <span className="text-4xl block mb-3">📚</span>
+                <p className="font-semibold text-foreground mb-1">No books in the club yet</p>
+                <p className="text-sm text-muted-foreground mb-4">Add a book to the club first, then start a Group Read.</p>
+                <button
+                  type="button"
+                  onClick={() => { setShowGroupReadSheet(false); setShowAddBook(true); }}
+                  className="flex items-center gap-2 mx-auto px-4 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 transition-opacity"
+                >
+                  <Plus size={16} />
+                  Add a book first
+                </button>
+              </div>
+            ) : (
             <form onSubmit={handleStartGroupRead} className="space-y-4">
               <div>
                 <label className="block text-sm font-semibold mb-2">Select a book</label>
@@ -1042,6 +1057,7 @@ export default function ClubDetailPage() {
                 Start Group Read
               </button>
             </form>
+            )}
           </div>
         </div>
       )}
