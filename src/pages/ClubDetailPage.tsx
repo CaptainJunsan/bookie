@@ -773,8 +773,7 @@ export default function ClubDetailPage() {
     { id: "books", label: "Books", icon: <BookOpen size={12} /> },
     { id: "groups", label: "Groups", icon: <Layers size={12} /> },
     { id: "members", label: "Members", icon: <Users size={12} /> },
-    { id: "progress", label: "Progress", icon: <BarChart2 size={12} /> },
-    { id: "topics", label: "Topics", icon: <MessageSquare size={12} />, badge: hasTopicNotifs },
+    ...(isOwnerOrAdmin ? [{ id: "progress" as Tab, label: "Progress", icon: <BarChart2 size={12} /> }] : []),
     ...(isOwner ? [{ id: "reports" as Tab, label: "Reports", icon: <FileText size={12} /> }] : []),
   ];
 
@@ -905,7 +904,7 @@ export default function ClubDetailPage() {
         )}
 
         {/* Tabs */}
-        <div className="flex gap-1 bg-muted rounded-xl p-1 mb-5 overflow-x-auto">
+        <div className="flex gap-1 bg-muted rounded-xl p-1 mb-4 overflow-x-auto">
           {tabs.map((t) => (
             <button key={t.id} onClick={() => setActiveTab(t.id)}
               className={cn("flex items-center gap-1 flex-shrink-0 px-3 py-2 text-xs font-semibold rounded-lg transition-all relative",
@@ -919,21 +918,47 @@ export default function ClubDetailPage() {
           ))}
         </div>
 
+        {/* ── Topics CTA — full width on mobile, right-anchored on desktop ── */}
+        {activeTab !== "topics" && amIMember && (
+          <div className="flex justify-end mb-5">
+            <button
+              onClick={() => setActiveTab("topics")}
+              className="w-full lg:w-auto flex items-center justify-between lg:justify-start gap-4 px-4 py-3 rounded-2xl bg-card border border-border hover:border-primary/50 hover:bg-primary/5 transition-all group"
+            >
+              <div className="flex items-center gap-3">
+                <span className="relative shrink-0">
+                  <MessageSquare size={20} className="text-primary" />
+                  {hasTopicNotifs && (
+                    <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-red-500 border-2 border-card" />
+                  )}
+                </span>
+                <div className="text-left">
+                  <p className="text-sm font-bold text-foreground leading-none mb-0.5">Topics</p>
+                  <p className="text-xs text-muted-foreground leading-none">
+                    {topics.length === 0
+                      ? "No discussions yet"
+                      : `${topics.length} discussion${topics.length !== 1 ? "s" : ""}`}
+                  </p>
+                </div>
+              </div>
+              <ChevronRight size={16} className="text-muted-foreground group-hover:text-primary transition-colors shrink-0" />
+            </button>
+          </div>
+        )}
+
         {/* ── Tab: Books ── */}
         {activeTab === "books" && (
           <div>
-            {amIMember && (
+            {isOwnerOrAdmin && (
               <div className="flex gap-2 mb-4">
                 <button onClick={() => setShowAddBook(true)}
                   className="flex-1 flex items-center gap-2 px-4 py-3 border-2 border-dashed border-border rounded-2xl text-sm font-semibold text-muted-foreground hover:border-primary hover:text-primary transition-colors">
                   <Plus size={16} />Add a book
                 </button>
-                {isOwnerOrAdmin && (
-                  <button onClick={() => setShowGroupReadSheet(true)}
-                    className="flex items-center gap-2 px-4 py-3 border-2 border-dashed border-primary/40 rounded-2xl text-sm font-semibold text-primary hover:border-primary hover:bg-primary/5 transition-colors">
-                    <BookMarked size={16} />Group Read
-                  </button>
-                )}
+                <button onClick={() => setShowGroupReadSheet(true)}
+                  className="flex items-center gap-2 px-4 py-3 border-2 border-dashed border-primary/40 rounded-2xl text-sm font-semibold text-primary hover:border-primary hover:bg-primary/5 transition-colors">
+                  <BookMarked size={16} />Group Read
+                </button>
               </div>
             )}
 
