@@ -141,6 +141,7 @@ export const STATUS_LABELS: Record<ReadingStatus, string> = {
 // ── Reading Clubs ─────────────────────────────────────────────────────────────
 
 export type ClubRole = "owner" | "admin" | "member";
+export type JoinRequestStatus = "pending" | "approved" | "rejected";
 
 export interface Club {
   id: string;
@@ -151,9 +152,32 @@ export interface Club {
   invite_token: string;
   created_by: string | null;
   created_at: string;
+  city: string | null;
+  suburb: string | null;
   // joined via query
   member_count?: number;
   my_role?: ClubRole;
+}
+
+export interface ReadingGroup {
+  id: string;
+  club_id: string;
+  name: string;
+  description: string | null;
+  age_min: number | null;
+  age_max: number | null;
+  created_at: string;
+}
+
+export interface ClubJoinRequest {
+  id: string;
+  club_id: string;
+  family_member_id: string;
+  status: JoinRequestStatus;
+  message: string | null;
+  requested_at: string;
+  reviewed_at: string | null;
+  reviewed_by: string | null;
 }
 
 export interface ClubMember {
@@ -178,6 +202,7 @@ export interface ClubBook {
   added_at: string;
   is_current_read: boolean;
   read_target_date: string | null;
+  reading_group_id: string | null;
 }
 
 export interface ClubReadingProgress {
@@ -195,7 +220,7 @@ export interface ClubNotification {
   id: string;
   club_id: string;
   member_id: string;
-  type: "new_book" | "new_member" | "milestone" | "invite";
+  type: "new_book" | "new_member" | "milestone" | "invite" | "join_request";
   title: string;
   seen: boolean;
   created_at: string;
