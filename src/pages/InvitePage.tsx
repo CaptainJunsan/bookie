@@ -266,6 +266,7 @@ export default function InvitePage() {
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="At least 8 characters"
                     minLength={8}
+                    autoComplete="new-password"
                     className="w-full px-4 py-3 pr-11 rounded-xl bg-input-background border border-border outline-none focus:ring-2 focus:ring-ring text-base"
                   />
                   <button

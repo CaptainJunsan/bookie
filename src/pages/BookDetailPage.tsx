@@ -44,27 +44,34 @@ export default function BookDetailPage() {
   }, [id]);
 
   async function loadBook() {
-    const [bookRes, progressRes, ratingsRes] = await Promise.all([
-      supabase.from("books").select("*").eq("id", id).single(),
-      supabase.from("reading_progress").select("*").eq("book_id", id),
-      supabase.from("ratings").select("*").eq("book_id", id),
-    ]);
+    setLoading(true);
+    setData(null);
+    try {
+      const [bookRes, progressRes, ratingsRes] = await Promise.all([
+        supabase.from("books").select("*").eq("id", id).single(),
+        supabase.from("reading_progress").select("*").eq("book_id", id),
+        supabase.from("ratings").select("*").eq("book_id", id),
+      ]);
 
-    if (!bookRes.data) { navigate("/books"); return; }
+      if (!bookRes.data) { navigate("/books"); return; }
 
-    const progressByMember: Record<string, ReadingProgress> = {};
-    (progressRes.data as ReadingProgress[] || []).forEach((p) => { progressByMember[p.member_id] = p; });
+      const progressByMember: Record<string, ReadingProgress> = {};
+      (progressRes.data as ReadingProgress[] || []).forEach((p) => { progressByMember[p.member_id] = p; });
 
-    const ratingByMember: Record<string, Rating> = {};
-    (ratingsRes.data as Rating[] || []).forEach((r) => { ratingByMember[r.member_id] = r; });
+      const ratingByMember: Record<string, Rating> = {};
+      (ratingsRes.data as Rating[] || []).forEach((r) => { ratingByMember[r.member_id] = r; });
 
-    setData({ book: bookRes.data as Book, progressByMember, ratingByMember });
+      setData({ book: bookRes.data as Book, progressByMember, ratingByMember });
 
-    const inputs: Record<string, string> = {};
-    Object.entries(progressByMember).forEach(([mid, prog]) => { inputs[mid] = String(prog.current_page); });
-    setPageInputs(inputs);
-
-    setLoading(false);
+      const inputs: Record<string, string> = {};
+      Object.entries(progressByMember).forEach(([mid, prog]) => { inputs[mid] = String(prog.current_page); });
+      setPageInputs(inputs);
+    } catch (err) {
+      console.error("Failed to load book:", err);
+      toast.error("Failed to load book details");
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function updateProgress(memberId: string, status: ReadingStatus, page?: number) {
@@ -235,7 +242,12 @@ export default function BookDetailPage() {
       <div className="relative">
         {book.cover_url ? (
           <div className="h-48 overflow-hidden">
-            <img src={book.cover_url} alt={book.title} className="w-full h-full object-cover" />
+            <img
+              src={book.cover_url}
+              alt={book.title}
+              className="w-full h-full object-cover"
+              onError={(e) => { (e.currentTarget as HTMLImageElement).closest(".h-48")?.classList.replace("h-48", "h-32"); e.currentTarget.style.display = "none"; }}
+            />
             <div className="absolute inset-0 bg-gradient-to-t from-background/95 via-background/40 to-transparent" />
           </div>
         ) : (
@@ -262,7 +274,12 @@ export default function BookDetailPage() {
         <div className="flex gap-4 mb-5">
           {book.cover_url && (
             <div className="w-24 flex-shrink-0 -mt-12 rounded-xl overflow-hidden border-2 border-card shadow-lg bg-secondary">
-              <img src={book.cover_url} alt={book.title} className="w-full aspect-[2/3] object-cover" />
+              <img
+                src={book.cover_url}
+                alt={book.title}
+                className="w-full aspect-[2/3] object-cover"
+                onError={(e) => { e.currentTarget.style.display = "none"; }}
+              />
             </div>
           )}
           <div className={`flex-1 ${book.cover_url ? "pt-0" : "pt-2"}`}>

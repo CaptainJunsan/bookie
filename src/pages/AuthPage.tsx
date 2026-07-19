@@ -252,6 +252,7 @@ export default function AuthPage() {
                       onChange={(e) => setPassword(e.target.value)}
                       placeholder={mode === "signup" ? "At least 8 characters" : "Your password"}
                       minLength={mode === "signup" ? 8 : 1}
+                      autoComplete={mode === "signup" ? "new-password" : "current-password"}
                       className="w-full px-4 py-3 pr-11 rounded-xl bg-input-background border border-border outline-none focus:ring-2 focus:ring-ring text-base"
                     />
                     <button

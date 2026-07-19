@@ -1,6 +1,7 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import {
-  Search, Loader2, BookOpen, Plus, Heart, Check, X, ChevronRight, Users
+  Search, Loader2, BookOpen, Plus, Heart, Check, X, ChevronRight, Users,
+  Camera, ScanLine,
 } from "lucide-react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { supabase } from "../lib/supabase";
@@ -24,9 +25,172 @@ interface SearchResult extends OLDoc {
   addStatus: AddStatus;
 }
 
+// ─── Camera ISBN Scanner ──────────────────────────────────────────────────────
+
+function CameraScanner({ onScan, onClose }: { onScan: (isbn: string) => void; onClose: () => void }) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const animFrameRef = useRef<number>(0);
+  const [supported, setSupported] = useState<boolean | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [scanning, setScanning] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const hasBarcodeDetector = "BarcodeDetector" in window;
+    const hasCamera = !!navigator.mediaDevices?.getUserMedia;
+    setSupported(hasBarcodeDetector && hasCamera);
+    if (hasBarcodeDetector && hasCamera) startCamera();
+    return stopCamera;
+  }, []);
+
+  async function startCamera() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } },
+      });
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play();
+        setScanning(true);
+        detectLoop();
+      }
+    } catch (e: unknown) {
+      setError(e instanceof Error && e.name === "NotAllowedError"
+        ? "Camera permission denied. Please allow camera access and try again."
+        : "Could not access camera.");
+    }
+  }
+
+  function stopCamera() {
+    cancelAnimationFrame(animFrameRef.current);
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
+  }
+
+  async function detectLoop() {
+    if (!videoRef.current) return;
+    const detector = new (window as unknown as { BarcodeDetector: new(opts: object) => { detect: (source: HTMLVideoElement) => Promise<Array<{rawValue: string}>> } }).BarcodeDetector({
+      formats: ["ean_13", "ean_8", "upc_a", "upc_e", "isbn_13", "isbn_10", "code_128", "code_39"],
+    });
+    async function frame() {
+      if (!videoRef.current || videoRef.current.readyState < 2) {
+        animFrameRef.current = requestAnimationFrame(frame);
+        return;
+      }
+      try {
+        const barcodes = await detector.detect(videoRef.current);
+        if (barcodes.length > 0) {
+          const raw = barcodes[0].rawValue.replace(/[-\s]/g, "");
+          if (/^[0-9]{9,13}[0-9X]?$/.test(raw)) {
+            stopCamera();
+            onScan(raw);
+            return;
+          }
+        }
+      } catch { /* frame failed, keep scanning */ }
+      animFrameRef.current = requestAnimationFrame(frame);
+    }
+    animFrameRef.current = requestAnimationFrame(frame);
+  }
+
+  async function handleFileCapture(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!("BarcodeDetector" in window)) {
+      toast.error("Barcode detection not supported in this browser");
+      return;
+    }
+    try {
+      const img = document.createElement("img");
+      img.src = URL.createObjectURL(file);
+      await new Promise((res) => { img.onload = res; });
+      const detector = new (window as unknown as { BarcodeDetector: new(opts: object) => { detect: (source: HTMLImageElement) => Promise<Array<{rawValue: string}>> } }).BarcodeDetector({
+        formats: ["ean_13", "ean_8", "upc_a", "upc_e", "isbn_13", "isbn_10"],
+      });
+      const barcodes = await detector.detect(img);
+      if (barcodes.length > 0) {
+        onScan(barcodes[0].rawValue.replace(/[-\s]/g, ""));
+      } else {
+        toast.error("No barcode found in image");
+      }
+      URL.revokeObjectURL(img.src);
+    } catch {
+      toast.error("Could not read barcode from image");
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[60] bg-black/90 flex flex-col">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 pt-safe pt-4 pb-3 text-white">
+        <button onClick={onClose} className="flex items-center gap-2 text-sm font-semibold text-white/80 hover:text-white">
+          <X size={18} /> Cancel
+        </button>
+        <p className="font-semibold text-sm">Scan ISBN Barcode</p>
+        <div className="w-16" />
+      </div>
+
+      {/* Camera / error view */}
+      <div className="flex-1 flex flex-col items-center justify-center px-6 gap-5">
+        {error ? (
+          <div className="text-center space-y-3">
+            <Camera size={48} className="text-white/40 mx-auto" />
+            <p className="text-white/70 text-sm">{error}</p>
+          </div>
+        ) : supported === false ? (
+          <div className="text-center space-y-3">
+            <ScanLine size={48} className="text-white/40 mx-auto" />
+            <p className="text-white font-semibold">Live scanning not supported</p>
+            <p className="text-white/60 text-sm">Take a photo of the barcode instead</p>
+            <label className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-white text-black font-bold text-sm cursor-pointer">
+              <Camera size={16} /> Take photo
+              <input ref={fileInputRef} type="file" accept="image/*" capture="environment" className="sr-only" onChange={handleFileCapture} />
+            </label>
+          </div>
+        ) : (
+          <>
+            {/* Video stream */}
+            <div className="relative w-full max-w-sm rounded-2xl overflow-hidden bg-black">
+              <video ref={videoRef} className="w-full aspect-[4/3] object-cover" autoPlay playsInline muted />
+              {/* Viewfinder overlay */}
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                <div className="relative w-56 h-32">
+                  <div className="absolute top-0 left-0 w-8 h-8 border-t-[3px] border-l-[3px] border-white rounded-tl-lg" />
+                  <div className="absolute top-0 right-0 w-8 h-8 border-t-[3px] border-r-[3px] border-white rounded-tr-lg" />
+                  <div className="absolute bottom-0 left-0 w-8 h-8 border-b-[3px] border-l-[3px] border-white rounded-bl-lg" />
+                  <div className="absolute bottom-0 right-0 w-8 h-8 border-b-[3px] border-r-[3px] border-white rounded-br-lg" />
+                  {scanning && (
+                    <div className="absolute inset-x-0 top-1/2 h-0.5 bg-primary/80 animate-pulse" />
+                  )}
+                </div>
+              </div>
+            </div>
+            <p className="text-white/60 text-sm text-center">Point the camera at a book's barcode</p>
+          </>
+        )}
+      </div>
+
+      {/* File fallback for supported browsers too (desktop) */}
+      {supported && (
+        <div className="px-6 pb-safe pb-8 pt-2">
+          <label className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border border-white/20 text-white/60 text-sm font-semibold cursor-pointer hover:bg-white/10 transition-colors">
+            <Camera size={15} /> Or take / upload a photo
+            <input ref={fileInputRef} type="file" accept="image/*" capture="environment" className="sr-only" onChange={handleFileCapture} />
+          </label>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Main page ────────────────────────────────────────────────────────────────
+
 export default function SearchPage() {
   const { family, member, allMembers } = useAuth();
   const inputRef = useRef<HTMLInputElement>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isParent = member ? !member.is_child : false;
   const children = (allMembers as FamilyMember[]).filter((m) => m.is_child);
@@ -36,6 +200,7 @@ export default function SearchPage() {
   const [results, setResults] = useState<SearchResult[]>([]);
   const [searching, setSearching] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
+  const [showScanner, setShowScanner] = useState(false);
 
   // ── Detail sheet state ──
   const [detailResult, setDetailResult] = useState<SearchResult | null>(null);
@@ -49,8 +214,8 @@ export default function SearchPage() {
 
   // ── Search ────────────────────────────────────────────────────────────────
 
-  async function doSearch() {
-    const q = query.trim();
+  const doSearch = useCallback(async (overrideQuery?: string) => {
+    const q = (overrideQuery ?? query).trim();
     if (!q) return;
     setSearching(true);
     setResults([]);
@@ -75,6 +240,32 @@ export default function SearchPage() {
       setSearching(false);
       setHasSearched(true);
     }
+  }, [query]);
+
+  // Debounced search-as-you-type
+  useEffect(() => {
+    if (!query.trim() || query.trim().length < 2) return;
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      doSearch();
+    }, 300);
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [query]);
+
+  function handleQueryChange(value: string) {
+    setQuery(value);
+    if (!value.trim()) {
+      setResults([]);
+      setHasSearched(false);
+    }
+  }
+
+  function handleIsbnScan(isbn: string) {
+    setShowScanner(false);
+    setQuery(isbn);
+    doSearch(isbn);
   }
 
   function setResultStatus(key: string, status: AddStatus) {
@@ -113,17 +304,15 @@ export default function SearchPage() {
 
   // ── Add book ──────────────────────────────────────────────────────────────
 
-  // Quick add from list card (always for current user only)
   async function quickAdd(result: SearchResult, wantToRead: boolean) {
     if (!member) return;
     await addBook(result, wantToRead ? [member.id] : [], wantToRead);
   }
 
-  // "Want to read" from detail sheet — show picker for parents with children
   function handleWantToRead() {
     if (!detailResult || !member) return;
     if (isParent && children.length > 0) {
-      setPickerMembers([member.id]); // default: self selected
+      setPickerMembers([member.id]);
       setShowPicker(true);
     } else {
       addBook(detailResult, [member.id], true);
@@ -133,7 +322,6 @@ export default function SearchPage() {
   async function addBook(result: SearchResult, readingMemberIds: string[], wantToRead: boolean) {
     if (!family || !member) return;
     setSavingFor(wantToRead ? "want" : "library");
-    // Also mark the card in the list while saving
     setResultStatus(result.key, "adding");
     try {
       const coverUrl = result.cover_i
@@ -212,23 +400,35 @@ export default function SearchPage() {
             ref={inputRef}
             type="text"
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && doSearch()}
+            onChange={(e) => handleQueryChange(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") { if (debounceRef.current) clearTimeout(debounceRef.current); doSearch(); } }}
             placeholder="Title, author, or ISBN…"
-            className="w-full pl-4 pr-10 py-3 rounded-xl bg-input-background border border-border outline-none focus:ring-2 focus:ring-ring text-sm"
+            className="w-full pl-4 pr-20 py-3 rounded-xl bg-input-background border border-border outline-none focus:ring-2 focus:ring-ring text-sm"
             autoFocus
           />
-          {query && (
+          <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
+            {/* Camera / ISBN scan button */}
             <button
-              onClick={clearSearch}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+              type="button"
+              onClick={() => setShowScanner(true)}
+              className="text-muted-foreground hover:text-primary transition-colors"
+              title="Scan ISBN barcode"
             >
-              <X size={15} />
+              <Camera size={17} />
             </button>
-          )}
+            {/* Clear button */}
+            {query && (
+              <button
+                onClick={clearSearch}
+                className="text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <X size={15} />
+              </button>
+            )}
+          </div>
         </div>
         <button
-          onClick={doSearch}
+          onClick={() => { if (debounceRef.current) clearTimeout(debounceRef.current); doSearch(); }}
           disabled={searching || !query.trim()}
           className="px-4 py-3 rounded-xl bg-primary text-primary-foreground font-bold text-sm disabled:opacity-60 hover:opacity-90 transition-opacity flex items-center gap-2"
         >
@@ -278,7 +478,6 @@ export default function SearchPage() {
 
             return (
               <div key={result.key} className="bg-card border border-border rounded-2xl overflow-hidden">
-                {/* Tappable area → opens detail */}
                 <button
                   onClick={() => openDetail(result)}
                   className="w-full flex gap-4 p-4 text-left hover:bg-secondary/40 transition-colors"
@@ -317,7 +516,6 @@ export default function SearchPage() {
                   )}
                 </button>
 
-                {/* Quick-add actions */}
                 {!isAdded && (
                   <div className="flex gap-2 px-4 pb-3 border-t border-border/50 pt-2.5">
                     <button
@@ -350,6 +548,14 @@ export default function SearchPage() {
         </div>
       )}
 
+      {/* ── Camera Scanner ── */}
+      {showScanner && (
+        <CameraScanner
+          onScan={handleIsbnScan}
+          onClose={() => setShowScanner(false)}
+        />
+      )}
+
       {/* ── Detail Sheet ── */}
       <Dialog.Root open={!!detailResult} onOpenChange={(open) => { if (!open) closeDetail(); }}>
         <Dialog.Portal>
@@ -357,7 +563,6 @@ export default function SearchPage() {
           <Dialog.Content className="fixed bottom-0 left-0 right-0 z-50 bg-card rounded-t-3xl shadow-2xl border-t border-border max-w-lg mx-auto max-h-[90vh] flex flex-col">
             {detailResult && (
               <>
-                {/* Header */}
                 <div className="flex items-center justify-between px-5 pt-5 pb-3 flex-shrink-0">
                   <Dialog.Title className="font-display font-bold text-lg">Book details</Dialog.Title>
                   <Dialog.Close className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground">
@@ -365,9 +570,7 @@ export default function SearchPage() {
                   </Dialog.Close>
                 </div>
 
-                {/* Scrollable body */}
                 <div className="flex-1 overflow-y-auto px-5 pb-6 space-y-5">
-                  {/* Cover + title row */}
                   <div className="flex gap-4">
                     <div className="w-24 h-36 flex-shrink-0 rounded-xl overflow-hidden bg-secondary flex items-center justify-center shadow-md">
                       {detailResult.cover_i ? (
@@ -386,7 +589,6 @@ export default function SearchPage() {
                       {detailResult.author_name?.[0] && (
                         <p className="text-muted-foreground mt-1">by {detailResult.author_name[0]}</p>
                       )}
-                      {/* Metadata pills */}
                       <div className="flex flex-wrap gap-2 mt-3">
                         {detailResult.first_publish_year && (
                           <span className="px-2.5 py-1 rounded-lg bg-secondary text-xs font-semibold text-muted-foreground">
@@ -407,7 +609,6 @@ export default function SearchPage() {
                     </div>
                   </div>
 
-                  {/* Description */}
                   {loadingDesc && (
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
                       <Loader2 size={12} className="animate-spin" />
@@ -421,7 +622,6 @@ export default function SearchPage() {
                     </div>
                   )}
 
-                  {/* ── Action buttons ── */}
                   {detailAdded ? (
                     <div className="flex items-center gap-2 text-sm font-semibold text-primary">
                       <Check size={15} />
@@ -455,14 +655,12 @@ export default function SearchPage() {
                       </button>
                     </div>
                   ) : (
-                    /* ── Member picker ── */
                     <div className="bg-secondary rounded-2xl p-4 space-y-3">
                       <p className="font-semibold text-sm flex items-center gap-2">
                         <Users size={15} className="text-primary" />
                         Who is this for?
                       </p>
                       <div className="space-y-2">
-                        {/* Self */}
                         {member && (
                           <MemberPickerRow
                             m={member as FamilyMember}
@@ -471,7 +669,6 @@ export default function SearchPage() {
                             onToggle={() => togglePickerMember(member.id)}
                           />
                         )}
-                        {/* Children */}
                         {children.map((child) => (
                           <MemberPickerRow
                             key={child.id}
@@ -511,8 +708,6 @@ export default function SearchPage() {
     </div>
   );
 }
-
-// ─── Member picker row ────────────────────────────────────────────────────────
 
 function MemberPickerRow({
   m, isYou = false, selected, onToggle,

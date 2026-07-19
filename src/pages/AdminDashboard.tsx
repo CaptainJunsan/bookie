@@ -521,7 +521,18 @@ interface DetailViewProps {
   onClose: () => void;
 }
 
-function DetailView({ metric, overview, books, authors, ageBreakdown, chartData, families }: DetailViewProps) {
+function BackButton({ onClose }: { onClose: () => void }) {
+  return (
+    <button
+      onClick={onClose}
+      className="flex items-center gap-1.5 text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors mb-4 print:hidden"
+    >
+      <ArrowLeft size={15} /> Back to Overview
+    </button>
+  );
+}
+
+function DetailView({ metric, overview, books, authors, ageBreakdown, chartData, families, onClose }: DetailViewProps) {
   const [sortFamilies, setSortFamilies] = useState<"books" | "reads" | "members" | "pages">("books");
   const [search, setSearch] = useState("");
   const [ageFilter, setAgeFilter] = useState("all");
@@ -538,6 +549,7 @@ function DetailView({ metric, overview, books, authors, ageBreakdown, chartData,
   if (metric === "families") {
     return (
       <>
+        <BackButton onClose={onClose} />
         <PrintHeader title="Families Report" />
         <SectionHeader title="All Families" subtitle={`${families.length} registered families`} />
         <div className="flex gap-2 mb-4 flex-wrap print:hidden">
@@ -573,6 +585,7 @@ function DetailView({ metric, overview, books, authors, ageBreakdown, chartData,
     const knownGroups = ageBreakdown.filter((ag) => ag.member_count > 0 || ag.books_finished > 0);
     return (
       <>
+        <BackButton onClose={onClose} />
         <PrintHeader title="Readers by Age Group" />
         <SectionHeader title="Readers by Age Group" subtitle="Books finished and pages read, segmented by reader age" />
 
@@ -660,6 +673,7 @@ function DetailView({ metric, overview, books, authors, ageBreakdown, chartData,
     );
     return (
       <>
+        <BackButton onClose={onClose} />
         <PrintHeader title={metric === "pages" ? "Books by Page Count" : "Books Report"} />
         <div className="flex gap-2 mb-4 print:hidden">
           <div className="relative flex-1">
@@ -685,6 +699,7 @@ function DetailView({ metric, overview, books, authors, ageBreakdown, chartData,
     const total = (overview?.total_finished ?? 0) + (overview?.total_reading ?? 0) + (overview?.total_want_to_read ?? 0);
     return (
       <>
+        <BackButton onClose={onClose} />
         <PrintHeader title="Reading Activity Report" />
         <SectionHeader title="Reading Activity" subtitle="Distribution of reading statuses across all families" />
         <div className="space-y-4">
@@ -737,6 +752,7 @@ function DetailView({ metric, overview, books, authors, ageBreakdown, chartData,
   if (metric === "authors") {
     return (
       <>
+        <BackButton onClose={onClose} />
         <PrintHeader title="Author Popularity Report" />
         <div className="flex gap-2 mb-4 items-center print:hidden">
           <div className="relative flex-1">

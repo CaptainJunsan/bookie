@@ -182,4 +182,13 @@
     font-weight: var(--font-weight-normal);
     line-height: 1.5;
   }
+
+  /* Hide browser-native password reveal / clear buttons so only our custom eye icon shows */
+  input::-ms-reveal,
+  input::-ms-clear,
+  input::-webkit-credentials-auto-fill-button {
+    display: none !important;
+    visibility: hidden;
+    pointer-events: none;
+  }
 }
