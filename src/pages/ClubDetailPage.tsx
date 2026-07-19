@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useNavigate } from "react-router";
 import {
   ArrowLeft, Users, BookOpen, BarChart2, FileText,
@@ -12,7 +12,6 @@ import {
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../contexts/AuthContext";
 import BookCover from "../components/BookCover";
-import { fetchBookByIsbn } from "../lib/supabase";
 import type {
   Club, ClubMember, ClubBook, ClubReadingProgress, ClubRole, FamilyMember,
   ReadingGroup, ClubJoinRequest, ClubTopic, ClubTopicComment,
@@ -87,13 +86,16 @@ export default function ClubDetailPage() {
   const [myRole, setMyRole] = useState<ClubRole | null>(null);
   const myMemberIds = allMembers.map((m) => m.id);
 
-  // Add book
+  // Add book — live search
   const [showAddBook, setShowAddBook] = useState(false);
   const [bookSearch, setBookSearch] = useState("");
   const [lookingUp, setLookingUp] = useState(false);
+  const [bookResults, setBookResults] = useState<Array<{ key: string; title: string; author_name?: string[]; cover_i?: number; isbn?: string[]; number_of_pages_median?: number }>>([]);
+  const [bookHasSearched, setBookHasSearched] = useState(false);
   const [bookPreview, setBookPreview] = useState<Partial<ClubBook> | null>(null);
   const [addingBook, setAddingBook] = useState(false);
   const [addBookGroupId, setAddBookGroupId] = useState<string | null>(null);
+  const bookDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Group Read
   const [showGroupReadSheet, setShowGroupReadSheet] = useState(false);
@@ -455,19 +457,52 @@ export default function ClubDetailPage() {
     toast.success("Invite link copied!");
   }
 
-  async function handleLookupBook() {
-    if (!bookSearch.trim()) return;
+  async function doBookSearch(q: string) {
+    const trimmed = q.trim();
+    if (!trimmed || trimmed.length < 2) return;
     setLookingUp(true);
-    setBookPreview(null);
+    setBookResults([]);
+    setBookHasSearched(false);
     try {
-      const isbnLike = bookSearch.replace(/[\s-]/g, "");
-      const data = await fetchBookByIsbn(isbnLike);
-      setBookPreview(data
-        ? { title: data.title, author: data.author || null, isbn: isbnLike, cover_url: data.cover_url || null, page_count: data.page_count || null }
-        : { title: bookSearch.trim(), author: null, isbn: null, cover_url: null, page_count: null });
+      const isIsbn = /^[0-9]{9,13}[0-9X]?$/.test(trimmed.replace(/[-\s]/g, ""));
+      const params = new URLSearchParams({
+        limit: "15",
+        fields: "key,title,author_name,cover_i,isbn,number_of_pages_median",
+      });
+      if (isIsbn) params.set("isbn", trimmed.replace(/[-\s]/g, ""));
+      else params.set("q", trimmed);
+      const res = await fetch(`https://openlibrary.org/search.json?${params}`);
+      const data = await res.json();
+      setBookResults((data.docs ?? []).filter((d: { title?: string }) => d.title));
+    } catch {
+      toast.error("Search failed — check your connection");
     } finally {
       setLookingUp(false);
+      setBookHasSearched(true);
     }
+  }
+
+  function handleBookSearchChange(value: string) {
+    setBookSearch(value);
+    setBookPreview(null);
+    if (!value.trim()) { setBookResults([]); setBookHasSearched(false); return; }
+    if (bookDebounceRef.current) clearTimeout(bookDebounceRef.current);
+    bookDebounceRef.current = setTimeout(() => doBookSearch(value), 350);
+  }
+
+  function handleSelectBookResult(result: { key: string; title: string; author_name?: string[]; cover_i?: number; isbn?: string[]; number_of_pages_median?: number }) {
+    const isbn = result.isbn?.find((i) => i.length === 13) ?? result.isbn?.[0] ?? null;
+    const coverUrl = result.cover_i ? `https://covers.openlibrary.org/b/id/${result.cover_i}-L.jpg` : null;
+    setBookPreview({ title: result.title, author: result.author_name?.[0] ?? null, isbn, cover_url: coverUrl, page_count: result.number_of_pages_median ?? null });
+  }
+
+  function resetAddBook() {
+    setShowAddBook(false);
+    setBookSearch("");
+    setBookResults([]);
+    setBookHasSearched(false);
+    setBookPreview(null);
+    setAddBookGroupId(null);
   }
 
   async function handleAddBook() {
@@ -497,10 +532,7 @@ export default function ClubDetailPage() {
       }
 
       setBooks((prev) => [inserted, ...prev]);
-      setShowAddBook(false);
-      setBookSearch("");
-      setBookPreview(null);
-      setAddBookGroupId(null);
+      resetAddBook();
       toast.success(`"${bookPreview.title}" added to the club!`);
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Failed to add book");
@@ -1624,51 +1656,106 @@ export default function ClubDetailPage() {
       {/* ── Add Book Sheet ── */}
       {showAddBook && (
         <div className="fixed inset-0 z-50 flex items-end lg:items-center justify-center">
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => { setShowAddBook(false); setBookPreview(null); setBookSearch(""); }} />
-          <div className="relative w-full max-w-md bg-card rounded-t-3xl lg:rounded-2xl border border-border shadow-2xl p-6 z-10">
-            <div className="flex items-center justify-between mb-5">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={resetAddBook} />
+          <div className="relative w-full max-w-md bg-card rounded-t-3xl lg:rounded-2xl border border-border shadow-2xl z-10 flex flex-col max-h-[90vh]">
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 pt-6 pb-4 shrink-0">
               <h2 className="font-display text-xl font-bold">Add a Book</h2>
-              <button onClick={() => { setShowAddBook(false); setBookPreview(null); setBookSearch(""); }} className="text-muted-foreground hover:text-foreground"><X size={20} /></button>
+              <button onClick={resetAddBook} className="text-muted-foreground hover:text-foreground"><X size={20} /></button>
             </div>
-            <div className="flex gap-2 mb-4">
-              <input type="text" value={bookSearch} onChange={(e) => setBookSearch(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleLookupBook()}
-                placeholder="ISBN or book title…"
-                className="flex-1 px-4 py-2.5 rounded-xl bg-background border border-border text-sm outline-none focus:ring-2 focus:ring-ring" />
-              <button onClick={handleLookupBook} disabled={lookingUp || !bookSearch.trim()}
-                className="px-3 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 disabled:opacity-60 flex items-center gap-1.5">
-                {lookingUp ? <Loader2 size={14} className="animate-spin" /> : <BookOpen size={14} />}
-              </button>
+
+            {/* Search input */}
+            <div className="px-6 pb-3 shrink-0">
+              <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-background border border-border focus-within:ring-2 focus-within:ring-ring">
+                {lookingUp
+                  ? <Loader2 size={15} className="text-muted-foreground animate-spin shrink-0" />
+                  : <BookOpen size={15} className="text-muted-foreground shrink-0" />}
+                <input
+                  autoFocus
+                  type="text"
+                  value={bookSearch}
+                  onChange={(e) => handleBookSearchChange(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && doBookSearch(bookSearch)}
+                  placeholder="Title, author name, or ISBN…"
+                  className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+                />
+                {bookSearch && (
+                  <button onClick={() => handleBookSearchChange("")} className="text-muted-foreground hover:text-foreground shrink-0">
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
             </div>
-            {bookPreview ? (
-              <div className="bg-background border border-border rounded-xl p-3 flex gap-3 mb-4">
-                <BookCover src={bookPreview.cover_url || undefined} isbn={bookPreview.isbn || undefined} title={bookPreview.title} className="w-12 h-16 rounded object-cover shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-sm">{bookPreview.title}</p>
-                  {bookPreview.author && <p className="text-xs text-muted-foreground">{bookPreview.author}</p>}
-                  {bookPreview.page_count && <p className="text-xs text-muted-foreground">{bookPreview.page_count} pages</p>}
+
+            {/* Scrollable content */}
+            <div className="overflow-y-auto flex-1 px-6 pb-2">
+              {/* Selected preview */}
+              {bookPreview && (
+                <div className="mb-3 p-3 rounded-xl border-2 border-primary bg-primary/5 flex gap-3 items-start">
+                  <BookCover src={bookPreview.cover_url || undefined} isbn={bookPreview.isbn || undefined} title={bookPreview.title} className="w-12 h-16 rounded object-cover shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-sm leading-snug">{bookPreview.title}</p>
+                    {bookPreview.author && <p className="text-xs text-muted-foreground mt-0.5">{bookPreview.author}</p>}
+                    {bookPreview.page_count && <p className="text-xs text-muted-foreground">{bookPreview.page_count} pages</p>}
+                    <button onClick={() => setBookPreview(null)} className="text-[11px] text-primary hover:underline mt-1">Change selection</button>
+                  </div>
                 </div>
-              </div>
-            ) : (
-              <div className="bg-muted rounded-xl p-3 mb-4">
-                <p className="text-xs text-muted-foreground">Enter an ISBN or book title and press search. Metadata is looked up automatically.</p>
+              )}
+
+              {/* Result list */}
+              {!bookPreview && (
+                <>
+                  {!bookSearch.trim() && !bookHasSearched && (
+                    <p className="text-sm text-muted-foreground text-center py-8">Search by title, author name, or ISBN</p>
+                  )}
+                  {lookingUp && (
+                    <div className="flex justify-center py-8"><Loader2 size={20} className="animate-spin text-primary" /></div>
+                  )}
+                  {!lookingUp && bookHasSearched && bookResults.length === 0 && (
+                    <p className="text-sm text-muted-foreground text-center py-8">No results — try a different title or ISBN</p>
+                  )}
+                  {!lookingUp && bookResults.length > 0 && (
+                    <div className="space-y-1.5 pb-2">
+                      {bookResults.map((r) => (
+                        <button key={r.key} type="button" onClick={() => handleSelectBookResult(r)}
+                          className="w-full flex items-center gap-3 p-2.5 rounded-xl hover:bg-muted transition-colors text-left">
+                          {r.cover_i
+                            ? <img src={`https://covers.openlibrary.org/b/id/${r.cover_i}-M.jpg`} alt="" className="w-9 h-12 rounded object-cover shrink-0 bg-muted" />
+                            : <div className="w-9 h-12 rounded bg-muted flex items-center justify-center shrink-0"><BookOpen size={14} className="text-muted-foreground" /></div>}
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold leading-snug truncate">{r.title}</p>
+                            {r.author_name?.[0] && <p className="text-xs text-muted-foreground truncate">{r.author_name[0]}</p>}
+                            {r.number_of_pages_median && <p className="text-xs text-muted-foreground">{r.number_of_pages_median} pages</p>}
+                          </div>
+                          <ChevronRight size={14} className="text-muted-foreground shrink-0" />
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+
+            {/* Footer — reading group + confirm */}
+            {bookPreview && (
+              <div className="px-6 pt-3 pb-6 border-t border-border shrink-0 space-y-3">
+                {readingGroups.length > 0 && (
+                  <div>
+                    <label className="block text-xs font-semibold mb-1.5">Assign to reading group <span className="text-muted-foreground font-normal">(optional)</span></label>
+                    <select value={addBookGroupId || ""} onChange={(e) => setAddBookGroupId(e.target.value || null)}
+                      className="w-full px-3 py-2.5 rounded-xl bg-background border border-border text-sm outline-none focus:ring-2 focus:ring-ring">
+                      <option value="">Whole club</option>
+                      {readingGroups.map((rg) => <option key={rg.id} value={rg.id}>{rg.name}</option>)}
+                    </select>
+                  </div>
+                )}
+                <button onClick={handleAddBook} disabled={addingBook}
+                  className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-bold text-sm hover:opacity-90 disabled:opacity-60 flex items-center justify-center gap-2">
+                  {addingBook ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
+                  Add to Club
+                </button>
               </div>
             )}
-            {readingGroups.length > 0 && (
-              <div className="mb-4">
-                <label className="block text-xs font-semibold mb-1.5">Assign to reading group <span className="text-muted-foreground font-normal">(optional)</span></label>
-                <select value={addBookGroupId || ""} onChange={(e) => setAddBookGroupId(e.target.value || null)}
-                  className="w-full px-3 py-2.5 rounded-xl bg-background border border-border text-sm outline-none focus:ring-2 focus:ring-ring">
-                  <option value="">Whole club</option>
-                  {readingGroups.map((rg) => <option key={rg.id} value={rg.id}>{rg.name}</option>)}
-                </select>
-              </div>
-            )}
-            <button onClick={handleAddBook} disabled={addingBook || !bookPreview}
-              className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-bold text-sm hover:opacity-90 disabled:opacity-60 flex items-center justify-center gap-2">
-              {addingBook ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
-              Add to Club
-            </button>
           </div>
         </div>
       )}

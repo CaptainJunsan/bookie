@@ -116,7 +116,7 @@ export default function Layout() {
       {isAppRoute && (
         <NavLink
           to="/books/add"
-          className="fixed bottom-[5.5rem] right-4 z-50 w-14 h-14 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow-xl shadow-primary/35 hover:opacity-90 active:scale-95 transition-all lg:hidden"
+          className="fixed bottom-[5.5rem] right-4 z-30 w-14 h-14 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow-xl shadow-primary/35 hover:opacity-90 active:scale-95 transition-all lg:hidden"
           aria-label="Add new book"
         >
           <PlusCircle size={24} />
