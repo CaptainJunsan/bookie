@@ -239,6 +239,7 @@ export interface ClubTopic {
   title: string;
   body: string | null;
   commenting_allowed: boolean;
+  threads_allowed: boolean;
   profanity_filter: boolean;
   is_pinned: boolean;
   created_at: string;

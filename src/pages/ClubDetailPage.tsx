@@ -143,6 +143,7 @@ export default function ClubDetailPage() {
   const [newTopicTitle, setNewTopicTitle] = useState("");
   const [newTopicBody, setNewTopicBody] = useState("");
   const [newTopicCommentingAllowed, setNewTopicCommentingAllowed] = useState(true);
+  const [newTopicThreadsAllowed, setNewTopicThreadsAllowed] = useState(true);
   const [savingTopic, setSavingTopic] = useState(false);
   const [blockedMemberIds, setBlockedMemberIds] = useState<string[]>([]);
   const [replyingToId, setReplyingToId] = useState<string | null>(null);
@@ -333,6 +334,7 @@ export default function ClubDetailPage() {
           title: newTopicTitle.trim(),
           body: newTopicBody.trim() || null,
           commenting_allowed: newTopicCommentingAllowed,
+          threads_allowed: newTopicCommentingAllowed ? newTopicThreadsAllowed : false,
           profanity_filter: club.profanity_filter,
         })
         .select().single();
@@ -342,6 +344,7 @@ export default function ClubDetailPage() {
       setNewTopicTitle("");
       setNewTopicBody("");
       setNewTopicCommentingAllowed(true);
+      setNewTopicThreadsAllowed(true);
       // Notify other members
       const othersForTopic = clubMembers
         .filter((cm) => !myMemberIds.includes(cm.family_member_id))
@@ -403,9 +406,14 @@ export default function ClubDetailPage() {
   }
 
   async function handleDeleteComment(commentId: string) {
-    const { error } = await supabase.from("club_topic_comments").update({ is_deleted: true }).eq("id", commentId);
+    // Cascade soft-delete to all descendants so orphaned replies don't linger
+    function collectDescendants(id: string, all: ClubTopicComment[]): string[] {
+      return [id, ...all.filter((c) => c.parent_id === id).flatMap((c) => collectDescendants(c.id, all))];
+    }
+    const toDelete = collectDescendants(commentId, topicComments);
+    const { error } = await supabase.from("club_topic_comments").update({ is_deleted: true }).in("id", toDelete);
     if (error) { toast.error("Failed to delete comment"); return; }
-    setTopicComments((prev) => prev.map((c) => c.id === commentId ? { ...c, is_deleted: true } : c));
+    setTopicComments((prev) => prev.map((c) => toDelete.includes(c.id) ? { ...c, is_deleted: true } : c));
   }
 
   async function handleBlockCommenter(memberId: string) {
@@ -1280,7 +1288,10 @@ export default function ClubDetailPage() {
             {/* Comments / threaded discussion */}
             {(() => {
               const amIBlocked = allMembers.some((m) => blockedMemberIds.includes(m.id));
-              const canComment = amIMember && activeTopic.commenting_allowed && (club?.commenting_enabled || isOwnerOrAdmin) && !amIBlocked;
+              // Owner always bypasses all comment restrictions
+              const canComment = isOwner || (amIMember && activeTopic.commenting_allowed && (club?.commenting_enabled || isOwnerOrAdmin) && !amIBlocked);
+              // Replies/threads: owner always allowed; members need threads_allowed on top of canComment
+              const canReply = isOwner || (canComment && (activeTopic.threads_allowed ?? true));
               const commentsDisabled = !activeTopic.commenting_allowed;
 
               if (commentsDisabled && topicComments.length === 0) {
@@ -1321,6 +1332,8 @@ export default function ClubDetailPage() {
                             isOwnerOrAdmin={isOwnerOrAdmin}
                             blockedMemberIds={blockedMemberIds}
                             canComment={canComment}
+                            canReply={canReply}
+                            isOwner={isOwner}
                             replyingToId={replyingToId}
                             replyText={replyText}
                             submittingComment={submittingComment}
@@ -1470,6 +1483,18 @@ export default function ClubDetailPage() {
                   <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${newTopicCommentingAllowed ? "translate-x-6" : ""}`} />
                 </button>
               </div>
+              {newTopicCommentingAllowed && (
+                <div className="flex items-center gap-3 p-3 bg-muted rounded-xl">
+                  <div className="flex-1">
+                    <p className="text-sm font-semibold">Enable replies &amp; threads</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">Members can reply to each other's comments. Turn off for simple Q&amp;A-style topics.</p>
+                  </div>
+                  <button type="button" onClick={() => setNewTopicThreadsAllowed(!newTopicThreadsAllowed)}
+                    className={`relative w-12 h-6 rounded-full transition-colors flex-shrink-0 ${newTopicThreadsAllowed ? "bg-primary" : "bg-border"}`}>
+                    <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${newTopicThreadsAllowed ? "translate-x-6" : ""}`} />
+                  </button>
+                </div>
+              )}
               <button type="submit" disabled={savingTopic || !newTopicTitle.trim()}
                 className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-bold text-sm hover:opacity-90 disabled:opacity-60 flex items-center justify-center gap-2">
                 {savingTopic ? <Loader2 size={16} className="animate-spin" /> : <MessageSquare size={16} />}
@@ -1800,8 +1825,10 @@ interface CommentThreadProps {
   myMemberIds: string[];
   allMembers: FamilyMember[];
   isOwnerOrAdmin: boolean;
+  isOwner: boolean;
   blockedMemberIds: string[];
   canComment: boolean;
+  canReply: boolean;
   replyingToId: string | null;
   replyText: string;
   submittingComment: boolean;
@@ -1817,7 +1844,7 @@ const MAX_VISUAL_DEPTH = 5;
 
 function CommentThread({
   comment, depth, clubCreatedBy, myMemberIds, allMembers,
-  isOwnerOrAdmin, blockedMemberIds, canComment,
+  isOwnerOrAdmin, isOwner, blockedMemberIds, canComment, canReply,
   replyingToId, replyText, submittingComment,
   onSetReplying, onSetReplyText, onReply, onDelete, onBlock, onUnblock,
 }: CommentThreadProps) {
@@ -1864,7 +1891,7 @@ function CommentThread({
 
                 {/* Action row */}
                 <div className="flex items-center gap-3 mt-1.5">
-                  {canComment && depth < MAX_VISUAL_DEPTH && (
+                  {canReply && depth < MAX_VISUAL_DEPTH && (
                     <button
                       onClick={() => onSetReplying(isReplying ? null : comment.id)}
                       className="flex items-center gap-1 text-[11px] font-semibold text-muted-foreground hover:text-primary transition-colors"
@@ -1881,14 +1908,14 @@ function CommentThread({
                 </div>
               </div>
 
-              {/* Owner moderation controls */}
-              {isOwnerOrAdmin && !isMyComment && (
+              {/* Owner moderation controls — delete any comment, block/unblock others */}
+              {isOwnerOrAdmin && (
                 <div className="flex items-center gap-0.5 shrink-0">
                   <button onClick={() => onDelete(comment.id)} title="Remove comment"
                     className="p-1 text-muted-foreground hover:text-red-500 rounded transition-colors">
                     <Trash2 size={12} />
                   </button>
-                  {!blockedMemberIds.includes(comment.author_id) ? (
+                  {!isMyComment && (!blockedMemberIds.includes(comment.author_id) ? (
                     <button onClick={() => onBlock(comment.author_id)} title="Block from commenting"
                       className="p-1 text-muted-foreground hover:text-red-500 rounded transition-colors">
                       <ShieldOff size={12} />
@@ -1898,7 +1925,7 @@ function CommentThread({
                       className="p-1 text-muted-foreground hover:text-green-600 rounded transition-colors">
                       <UserCheck size={12} />
                     </button>
-                  )}
+                  ))}
                 </div>
               )}
             </div>
@@ -1939,8 +1966,10 @@ function CommentThread({
                 myMemberIds={myMemberIds}
                 allMembers={allMembers}
                 isOwnerOrAdmin={isOwnerOrAdmin}
+                isOwner={isOwner}
                 blockedMemberIds={blockedMemberIds}
                 canComment={canComment}
+                canReply={canReply}
                 replyingToId={replyingToId}
                 replyText={replyText}
                 submittingComment={submittingComment}
