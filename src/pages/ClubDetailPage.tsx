@@ -6,7 +6,8 @@ import {
   Trash2, Settings, ChevronDown, Download, Calendar,
   Crown, BookMarked, MapPin, Layers, UserCheck, UserX,
   BookmarkPlus, MessageSquare, Pin, ShieldOff, AlertTriangle,
-  ChevronRight, Send, CornerDownRight,
+  ChevronRight, Send, CornerDownRight, HelpCircle,
+  ShieldCheck, UserCog, MessageCircleOff, BookKey,
 } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../contexts/AuthContext";
@@ -110,6 +111,7 @@ export default function ClubDetailPage() {
 
   // Settings
   const [showSettings, setShowSettings] = useState(false);
+  const [showClubInfo, setShowClubInfo] = useState(false);
   const [editName, setEditName] = useState("");
   const [editDesc, setEditDesc] = useState("");
   const [editCity, setEditCity] = useState("");
@@ -807,11 +809,16 @@ export default function ClubDetailPage() {
             <div className="flex-1 min-w-0">
               <div className="flex items-start justify-between gap-2">
                 <h1 className="font-display text-xl font-bold text-foreground leading-tight">{club.name}</h1>
-                {isOwnerOrAdmin && (
-                  <button onClick={() => setShowSettings(true)} className="p-2 rounded-xl text-muted-foreground hover:bg-muted hover:text-foreground transition-colors shrink-0">
-                    <Settings size={16} />
+                <div className="flex items-center gap-1 shrink-0">
+                  <button onClick={() => setShowClubInfo(true)} className="p-2 rounded-xl text-muted-foreground hover:bg-muted hover:text-foreground transition-colors" title="How clubs work">
+                    <HelpCircle size={16} />
                   </button>
-                )}
+                  {isOwnerOrAdmin && (
+                    <button onClick={() => setShowSettings(true)} className="p-2 rounded-xl text-muted-foreground hover:bg-muted hover:text-foreground transition-colors">
+                      <Settings size={16} />
+                    </button>
+                  )}
+                </div>
               </div>
               {club.description && <p className="text-sm text-muted-foreground mt-1">{club.description}</p>}
               <div className="flex items-center gap-3 mt-2 flex-wrap">
@@ -1448,6 +1455,115 @@ export default function ClubDetailPage() {
           </div>
         )}
       </div>
+
+      {/* ── Club Info Modal ── */}
+      {showClubInfo && (
+        <div className="fixed inset-0 z-50 flex items-end lg:items-center justify-center">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowClubInfo(false)} />
+          <div className="relative w-full max-w-md bg-card rounded-t-3xl lg:rounded-2xl border border-border shadow-2xl z-10 overflow-hidden">
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-border">
+              <div className="flex items-center gap-2">
+                <HelpCircle size={18} className="text-primary" />
+                <h2 className="font-display text-lg font-bold">How Clubs Work</h2>
+              </div>
+              <button onClick={() => setShowClubInfo(false)} className="p-1.5 rounded-xl text-muted-foreground hover:bg-muted hover:text-foreground transition-colors">
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Scrollable body */}
+            <div className="overflow-y-auto max-h-[70vh] px-6 py-5 space-y-5">
+
+              {/* Joining & membership */}
+              <div className="flex gap-3">
+                <div className="mt-0.5 w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+                  <Users size={15} className="text-primary" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-foreground">Joining a club</p>
+                  <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">Public clubs can be joined directly. Private clubs require an invite link or a join request that the club owner approves. The owner controls who is a member and can remove or block members at any time.</p>
+                </div>
+              </div>
+
+              {/* Reading & group reads */}
+              <div className="flex gap-3">
+                <div className="mt-0.5 w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+                  <BookOpen size={15} className="text-primary" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-foreground">Books &amp; group reads</p>
+                  <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">Club owners and admins add books and mark the current group read. Members track their own reading progress. Educational clubs organise members into reading groups by age or level.</p>
+                </div>
+              </div>
+
+              {/* Topics & discussion */}
+              <div className="flex gap-3">
+                <div className="mt-0.5 w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+                  <MessageSquare size={15} className="text-primary" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-foreground">Topics &amp; discussions</p>
+                  <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">Owners create discussion topics for the club. Members can comment and reply when the owner enables it. Threads can be turned on or off per topic — handy for simple Q&amp;A-style posts where you don't want nested replies.</p>
+                </div>
+              </div>
+
+              {/* Moderation */}
+              <div className="flex gap-3">
+                <div className="mt-0.5 w-8 h-8 rounded-xl bg-amber-500/10 flex items-center justify-center shrink-0">
+                  <ShieldCheck size={15} className="text-amber-500" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-foreground">Owner as moderator</p>
+                  <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">The club owner acts as the sole moderator. They have full, unrestricted control over membership, participation, and all content — including the ability to delete any comment or reply, block members from commenting, and disable discussions entirely, at any time and without notice.</p>
+                </div>
+              </div>
+
+              {/* Content & commenting */}
+              <div className="flex gap-3">
+                <div className="mt-0.5 w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+                  <MessageCircleOff size={15} className="text-primary" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-foreground">Commenting &amp; replies</p>
+                  <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">Commenting is off by default in educational clubs and on by default in social clubs, but the owner can change this at any time in club settings. A profanity filter is active by default to keep discussions family-friendly.</p>
+                </div>
+              </div>
+
+              {/* Starting your own club */}
+              <div className="flex gap-3">
+                <div className="mt-0.5 w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+                  <BookKey size={15} className="text-primary" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-foreground">Starting your own club</p>
+                  <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">Anyone can create a club from the Clubs page. Choose <strong className="text-foreground">Social</strong> for an open book-club style group, or <strong className="text-foreground">Educational</strong> for an age-grouped, structured reading programme. As the creator you become the owner and moderator.</p>
+                </div>
+              </div>
+
+              {/* Privacy */}
+              <div className="flex gap-3">
+                <div className="mt-0.5 w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+                  <UserCog size={15} className="text-primary" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-foreground">Your participation</p>
+                  <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">You can leave a club at any time from the Members tab. In age-locked educational clubs, members only see progress relevant to their own reading group. Your reading progress and comments are visible to all current club members.</p>
+                </div>
+              </div>
+
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-4 border-t border-border">
+              <button onClick={() => setShowClubInfo(false)}
+                className="w-full py-2.5 rounded-xl bg-primary text-primary-foreground font-semibold text-sm hover:opacity-90 transition-opacity">
+                Got it
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── New Topic Sheet ── */}
       {showNewTopic && (
