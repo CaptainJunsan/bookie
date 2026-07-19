@@ -64,7 +64,7 @@ export default function LandingPage() {
                 Sign in
               </button>
             </div>
-            <p className="text-xs text-muted-foreground mt-4">Free to start · No credit card required</p>
+            <p className="text-xs text-muted-foreground mt-4">100% free · No fees · No ads · No catch · Ever</p>
           </div>
 
           {/* Hero illustration */}
@@ -283,7 +283,8 @@ export default function LandingPage() {
         <div className="max-w-2xl mx-auto text-center">
           <span className="text-6xl block mb-6">📚</span>
           <h2 className="font-display text-4xl font-bold mb-4">Ready to start your family library?</h2>
-          <p className="text-muted-foreground text-lg mb-8">Join hundreds of families already reading together.</p>
+          <p className="text-muted-foreground text-lg mb-2">Join hundreds of families already reading together.</p>
+          <p className="text-sm text-muted-foreground mb-8">No subscription. No ads. No fees. Just books.</p>
           <button
             onClick={() => navigate("/auth?mode=signup")}
             className="inline-flex items-center gap-2 px-8 py-4 rounded-2xl bg-primary text-primary-foreground font-bold text-lg hover:opacity-90 transition-all shadow-lg shadow-primary/25"
@@ -306,12 +307,11 @@ export default function LandingPage() {
               <Link to="/about" className="hover:text-foreground transition-colors">About</Link>
               <Link to="/privacy" className="hover:text-foreground transition-colors">Privacy Policy</Link>
               <Link to="/terms" className="hover:text-foreground transition-colors">Terms & Conditions</Link>
-              <a href="mailto:hello@bookie.app" className="hover:text-foreground transition-colors">Contact</a>
             </nav>
           </div>
           <div className="mt-6 pt-6 border-t border-border text-center text-xs text-muted-foreground">
-            <p>© {new Date().getFullYear()} Bookie. Made with ❤️ for families who love to read.</p>
-            <p className="mt-1">Proudly South African 🇿🇦 · POPIA compliant</p>
+            <p>© {new Date().getFullYear()} Bookie. A family app, by a family, for families. Free forever.</p>
+            <p className="mt-1">Built with ❤️ in Cape Town, South Africa 🇿🇦 · POPIA compliant</p>
           </div>
         </div>
       </footer>

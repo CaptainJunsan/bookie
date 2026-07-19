@@ -31,10 +31,17 @@ export default function AboutPage() {
           <section>
             <h2 className="font-display text-2xl font-bold mb-3">Our story</h2>
             <p className="text-muted-foreground leading-relaxed">
-              Bookie started the way the best ideas do — at a kitchen table, surrounded by stacks of kids' books and a family that loved reading but had no good way to keep track of it all. Post-it notes on spines. Spreadsheets that were out of date by Tuesday. A group chat full of "wait, did we read that one?"
+              Bookie started the way the best ideas do — at a kitchen table in Cape Town, surrounded by stacks of kids' books and a family that loved reading but had no good way to keep track of it all. Post-it notes on spines. Spreadsheets that were out of date by Tuesday. A group chat full of "wait, did we read that one?"
             </p>
             <p className="text-muted-foreground leading-relaxed mt-4">
               The idea was simple: one beautiful, friendly app where the whole family — parents, grandparents, little ones — could see every book they'd ever read together, track who was on which page, and celebrate the joy of every story finished.
+            </p>
+          </section>
+
+          <section>
+            <h2 className="font-display text-2xl font-bold mb-3">Completely free. Always.</h2>
+            <p className="text-muted-foreground leading-relaxed">
+              Bookie is free. Not "free with a premium tier" free. Not "free for 30 days" free. Just free — because this is a family app built by a family, for families. There are no investors to satisfy, no ads to show you, no subscription to forget to cancel. Every feature in Bookie costs you nothing and always will.
             </p>
           </section>
 
@@ -45,7 +52,7 @@ export default function AboutPage() {
                 { emoji: "📖", title: "Reading is for everyone", body: "From board books to novels, every page counts. Bookie is built for all ages, all reading levels, all kinds of readers." },
                 { emoji: "👨‍👩‍👧‍👦", title: "Families read better together", body: "When reading is shared — talked about, recommended, celebrated — it becomes a habit that lasts a lifetime." },
                 { emoji: "🏘️", title: "Communities make it stick", body: "Reading Clubs let families connect with other readers in their neighbourhood, share recommendations, and discover books they'd never have found on their own." },
-                { emoji: "🔒", title: "Your data is yours", body: "We collect only what we need to make the app work, store it safely, and never sell it. Full stop." },
+                { emoji: "🔒", title: "Your data is yours", body: "We collect only what we need to make the app work, store it safely, and never sell it. No ads. No profiling. Full stop." },
               ].map(({ emoji, title, body }) => (
                 <div key={title} className="flex gap-4 p-4 bg-card border border-border rounded-2xl">
                   <span className="text-2xl shrink-0">{emoji}</span>
@@ -61,24 +68,15 @@ export default function AboutPage() {
           <section>
             <h2 className="font-display text-2xl font-bold mb-3">Built with care</h2>
             <p className="text-muted-foreground leading-relaxed">
-              Bookie is an independent product, built and maintained by a small team that uses it every day. Every feature exists because a real family needed it. We move carefully, respect your privacy, and keep things simple.
+              Every feature in Bookie exists because a real family needed it. We move carefully, we respect your privacy, and we keep things simple. No bloat, no dark patterns, no nonsense.
             </p>
-            <p className="text-muted-foreground leading-relaxed mt-4">
-              Have a suggestion or spotted a bug? We genuinely want to hear from you.
-            </p>
-            <a
-              href="mailto:hello@bookie.app"
-              className="inline-flex items-center gap-2 mt-4 px-5 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-bold hover:opacity-90 transition-opacity"
-            >
-              Say hello
-            </a>
           </section>
         </div>
-      </main>
 
-      <footer className="border-t border-border py-8 px-5 text-center text-xs text-muted-foreground">
-        <p>© {new Date().getFullYear()} Bookie. Made with ❤️ for families who love to read.</p>
-      </footer>
+        <div className="mt-14 pt-8 border-t border-border text-center">
+          <p className="text-sm text-muted-foreground">Built with ❤️ in Cape Town, South Africa.</p>
+        </div>
+      </main>
     </div>
   );
 }
