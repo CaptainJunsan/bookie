@@ -249,6 +249,7 @@ export interface ClubTopicComment {
   id: string;
   topic_id: string;
   author_id: string;
+  parent_id: string | null;
   body: string;
   is_deleted: boolean;
   created_at: string;

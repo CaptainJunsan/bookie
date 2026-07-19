@@ -6,7 +6,7 @@ import {
   Trash2, Settings, ChevronDown, Download, Calendar,
   Crown, BookMarked, MapPin, Layers, UserCheck, UserX,
   BookmarkPlus, MessageSquare, Pin, ShieldOff, AlertTriangle,
-  ChevronRight, Send,
+  ChevronRight, Send, CornerDownRight,
 } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../contexts/AuthContext";
@@ -145,6 +145,9 @@ export default function ClubDetailPage() {
   const [newTopicCommentingAllowed, setNewTopicCommentingAllowed] = useState(true);
   const [savingTopic, setSavingTopic] = useState(false);
   const [blockedMemberIds, setBlockedMemberIds] = useState<string[]>([]);
+  const [replyingToId, setReplyingToId] = useState<string | null>(null);
+  const [replyText, setReplyText] = useState("");
+  const [hasTopicNotifs, setHasTopicNotifs] = useState(false);
 
   // Settings extras
   const [editCommenting, setEditCommenting] = useState(false);
@@ -254,6 +257,11 @@ export default function ClubDetailPage() {
         .order("is_pinned", { ascending: false }).order("created_at", { ascending: false });
       setTopics(topicsData || []);
 
+      // Notification dot: show if any topic is newer than last Topics tab visit
+      const lastSeen = localStorage.getItem(`bookie_topics_seen_${id}`) ?? "1970-01-01T00:00:00.000Z";
+      const hasNew = (topicsData || []).some((t: ClubTopic) => t.created_at > lastSeen);
+      setHasTopicNotifs(hasNew);
+
       // Blocked commenters (owner/admin only)
       const myEntryForBlocks = rows.find((r) => myMemberIds.includes(r.family_member_id));
       if (myEntryForBlocks && (myEntryForBlocks.role === "owner" || myEntryForBlocks.role === "admin")) {
@@ -277,6 +285,12 @@ export default function ClubDetailPage() {
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => { if (activeTab === "reports" && id) loadReports(); }, [activeTab, id]);
+  useEffect(() => {
+    if (activeTab === "topics" && id) {
+      localStorage.setItem(`bookie_topics_seen_${id}`, new Date().toISOString());
+      setHasTopicNotifs(false);
+    }
+  }, [activeTab, id]);
 
   async function loadReports() {
     if (!id) return;
@@ -328,6 +342,15 @@ export default function ClubDetailPage() {
       setNewTopicTitle("");
       setNewTopicBody("");
       setNewTopicCommentingAllowed(true);
+      // Notify other members
+      const othersForTopic = clubMembers
+        .filter((cm) => !myMemberIds.includes(cm.family_member_id))
+        .map((cm) => cm.family_member_id);
+      if (othersForTopic.length) {
+        await supabase.from("club_notifications").insert(
+          othersForTopic.map((mid) => ({ club_id: club.id, member_id: mid, type: "new_topic", title: `💬 New topic: ${newTopicTitle.trim()}` })),
+        );
+      }
       toast.success("Topic posted!");
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Failed to post topic");
@@ -342,12 +365,41 @@ export default function ClubDetailPage() {
     const body = activeTopic.profanity_filter ? filterProfanity(newComment.trim(), wordList) : newComment.trim();
     const { data: comment, error } = await supabase
       .from("club_topic_comments")
-      .insert({ topic_id: activeTopic.id, author_id: member.id, body })
+      .insert({ topic_id: activeTopic.id, author_id: member.id, body, parent_id: null })
       .select("*, author:family_members(*)").single();
     if (error) { toast.error("Failed to post comment"); setSubmittingComment(false); return; }
     setTopicComments((prev) => [...prev, comment as ClubTopicComment]);
     setNewComment("");
     setSubmittingComment(false);
+    // Notify others
+    const othersForComment = clubMembers.filter((cm) => !myMemberIds.includes(cm.family_member_id)).map((cm) => cm.family_member_id);
+    if (othersForComment.length && club) {
+      await supabase.from("club_notifications").insert(
+        othersForComment.map((mid) => ({ club_id: club.id, member_id: mid, type: "new_comment", title: `💬 New comment in: ${activeTopic.title}` })),
+      );
+    }
+  }
+
+  async function handleSubmitReply(parentId: string) {
+    if (!activeTopic || !member || !replyText.trim()) return;
+    setSubmittingComment(true);
+    const body = activeTopic.profanity_filter ? filterProfanity(replyText.trim(), wordList) : replyText.trim();
+    const { data: comment, error } = await supabase
+      .from("club_topic_comments")
+      .insert({ topic_id: activeTopic.id, author_id: member.id, body, parent_id: parentId })
+      .select("*, author:family_members(*)").single();
+    if (error) { toast.error("Failed to post reply"); setSubmittingComment(false); return; }
+    setTopicComments((prev) => [...prev, comment as ClubTopicComment]);
+    setReplyingToId(null);
+    setReplyText("");
+    setSubmittingComment(false);
+    // Notify others
+    const othersForReply = clubMembers.filter((cm) => !myMemberIds.includes(cm.family_member_id)).map((cm) => cm.family_member_id);
+    if (othersForReply.length && club) {
+      await supabase.from("club_notifications").insert(
+        othersForReply.map((mid) => ({ club_id: club.id, member_id: mid, type: "new_comment", title: `💬 New reply in: ${activeTopic.title}` })),
+      );
+    }
   }
 
   async function handleDeleteComment(commentId: string) {
@@ -717,12 +769,12 @@ export default function ClubDetailPage() {
 
   const isOwner = myRole === "owner";
 
-  const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
+  const tabs: { id: Tab; label: string; icon: React.ReactNode; badge?: boolean }[] = [
     { id: "books", label: "Books", icon: <BookOpen size={12} /> },
     { id: "groups", label: "Groups", icon: <Layers size={12} /> },
     { id: "members", label: "Members", icon: <Users size={12} /> },
     { id: "progress", label: "Progress", icon: <BarChart2 size={12} /> },
-    { id: "topics", label: "Topics", icon: <MessageSquare size={12} /> },
+    { id: "topics", label: "Topics", icon: <MessageSquare size={12} />, badge: hasTopicNotifs },
     ...(isOwner ? [{ id: "reports" as Tab, label: "Reports", icon: <FileText size={12} /> }] : []),
   ];
 
@@ -856,9 +908,13 @@ export default function ClubDetailPage() {
         <div className="flex gap-1 bg-muted rounded-xl p-1 mb-5 overflow-x-auto">
           {tabs.map((t) => (
             <button key={t.id} onClick={() => setActiveTab(t.id)}
-              className={cn("flex items-center gap-1 flex-shrink-0 px-3 py-2 text-xs font-semibold rounded-lg transition-all",
+              className={cn("flex items-center gap-1 flex-shrink-0 px-3 py-2 text-xs font-semibold rounded-lg transition-all relative",
                 activeTab === t.id ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground")}>
-              {t.icon}{t.label}
+              <span className="relative">
+                {t.icon}
+                {t.badge && <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-red-500" />}
+              </span>
+              {t.label}
             </button>
           ))}
         </div>
@@ -1196,93 +1252,92 @@ export default function ClubDetailPage() {
               );
             })()}
 
-            {/* Comments */}
-            <div className="mb-3">
-              <h4 className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-3">Discussion</h4>
-              {commentsLoading ? (
-                <div className="flex justify-center py-6"><Loader2 size={20} className="text-primary animate-spin" /></div>
-              ) : topicComments.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-6">No comments yet. Be the first to reply!</p>
-              ) : (
-                <div className="space-y-2">
-                  {topicComments.map((comment) => {
-                    if (comment.is_deleted) {
-                      return (
-                        <div key={comment.id} className="px-3 py-2 rounded-xl bg-muted">
-                          <p className="text-xs text-muted-foreground italic">[comment removed]</p>
-                        </div>
-                      );
-                    }
-                    const authorIsOwner = comment.author_id === club?.created_by;
-                    const authorMember = comment.author as FamilyMember | undefined;
-                    const isMyComment = allMembers.some((m) => m.id === comment.author_id);
-                    return (
-                      <div key={comment.id} className={cn("rounded-xl border p-3", authorIsOwner ? "bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800" : "bg-card border-border")}>
-                        <div className="flex items-start gap-2">
-                          <span className="text-base shrink-0">{authorMember?.avatar_emoji || "👤"}</span>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap mb-0.5">
-                              <span className="text-xs font-semibold">{authorMember?.nickname || "Member"}</span>
-                              {authorIsOwner && <span className="text-[9px] font-bold uppercase tracking-wide px-1 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400"><Crown size={8} className="inline mr-0.5 -mt-0.5" />Owner</span>}
-                              <span className="text-[10px] text-muted-foreground">{new Date(comment.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
-                            </div>
-                            <p className="text-sm text-foreground leading-relaxed">{comment.body}</p>
-                          </div>
-                          {isOwnerOrAdmin && !isMyComment && (
-                            <div className="flex items-center gap-0.5 shrink-0">
-                              <button onClick={() => handleDeleteComment(comment.id)} title="Remove comment"
-                                className="p-1 text-muted-foreground hover:text-red-500 rounded transition-colors">
-                                <Trash2 size={12} />
-                              </button>
-                              {!blockedMemberIds.includes(comment.author_id) ? (
-                                <button onClick={() => handleBlockCommenter(comment.author_id)} title="Block from commenting"
-                                  className="p-1 text-muted-foreground hover:text-red-500 rounded transition-colors">
-                                  <ShieldOff size={12} />
-                                </button>
-                              ) : (
-                                <button onClick={() => handleUnblockCommenter(comment.author_id)} title="Unblock"
-                                  className="p-1 text-muted-foreground hover:text-green-600 rounded transition-colors">
-                                  <UserCheck size={12} />
-                                </button>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            {/* Comment input */}
+            {/* Comments / threaded discussion */}
             {(() => {
               const amIBlocked = allMembers.some((m) => blockedMemberIds.includes(m.id));
               const canComment = amIMember && activeTopic.commenting_allowed && (club?.commenting_enabled || isOwnerOrAdmin) && !amIBlocked;
-              if (!canComment) {
+              const commentsDisabled = !activeTopic.commenting_allowed;
+
+              if (commentsDisabled && topicComments.length === 0) {
+                // Fix 1: no discussion section at all, just the notice
                 return (
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted rounded-xl px-3 py-2">
-                    {amIBlocked ? <><ShieldOff size={12} className="shrink-0" />You have been blocked from commenting in this club.</> :
-                     !activeTopic.commenting_allowed ? <><MessageSquare size={12} className="shrink-0" />Comments are disabled for this topic.</> :
-                     <><MessageSquare size={12} className="shrink-0" />Commenting is disabled for this club.</>}
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted rounded-xl px-3 py-2 mt-2">
+                    <MessageSquare size={12} className="shrink-0" />
+                    Comments are disabled for this topic.
                   </div>
                 );
               }
+
+              const commentTree = buildCommentTree(topicComments);
+
               return (
-                <div className="flex gap-2 mt-2">
-                  <input
-                    type="text"
-                    value={newComment}
-                    onChange={(e) => setNewComment(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && newComment.trim()) { e.preventDefault(); handleSubmitComment(); } }}
-                    placeholder="Write a comment…"
-                    className="flex-1 px-4 py-2.5 rounded-xl bg-background border border-border text-sm outline-none focus:ring-2 focus:ring-ring"
-                  />
-                  <button onClick={handleSubmitComment} disabled={submittingComment || !newComment.trim()}
-                    className="px-3 py-2.5 rounded-xl bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-60 transition-opacity">
-                    {submittingComment ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
-                  </button>
-                </div>
+                <>
+                  {/* Thread list */}
+                  <div className="mb-3">
+                    <h4 className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-3">
+                      Discussion {topicComments.filter(c => !c.is_deleted).length > 0 && `· ${topicComments.filter(c => !c.is_deleted).length}`}
+                    </h4>
+                    {commentsLoading ? (
+                      <div className="flex justify-center py-6"><Loader2 size={20} className="text-primary animate-spin" /></div>
+                    ) : commentTree.length === 0 ? (
+                      <p className="text-sm text-muted-foreground text-center py-6">
+                        {canComment ? "No comments yet — be the first to reply!" : "No comments yet."}
+                      </p>
+                    ) : (
+                      <div className="space-y-1.5">
+                        {commentTree.map((node) => (
+                          <CommentThread
+                            key={node.id}
+                            comment={node}
+                            depth={0}
+                            clubCreatedBy={club?.created_by ?? null}
+                            myMemberIds={myMemberIds}
+                            allMembers={allMembers}
+                            isOwnerOrAdmin={isOwnerOrAdmin}
+                            blockedMemberIds={blockedMemberIds}
+                            canComment={canComment}
+                            replyingToId={replyingToId}
+                            replyText={replyText}
+                            submittingComment={submittingComment}
+                            onSetReplying={(id) => { setReplyingToId(id); setReplyText(""); }}
+                            onSetReplyText={setReplyText}
+                            onReply={handleSubmitReply}
+                            onDelete={handleDeleteComment}
+                            onBlock={handleBlockCommenter}
+                            onUnblock={handleUnblockCommenter}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Root comment input — only when commenting allowed */}
+                  {canComment && (
+                    <div className="flex gap-2 mt-1">
+                      <input
+                        type="text"
+                        value={newComment}
+                        onChange={(e) => setNewComment(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && newComment.trim()) { e.preventDefault(); handleSubmitComment(); } }}
+                        placeholder="Write a comment…"
+                        className="flex-1 px-4 py-2.5 rounded-xl bg-background border border-border text-sm outline-none focus:ring-2 focus:ring-ring"
+                      />
+                      <button onClick={handleSubmitComment} disabled={submittingComment || !newComment.trim()}
+                        className="px-3 py-2.5 rounded-xl bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-60 transition-opacity">
+                        {submittingComment ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Blocked / club-disabled notice */}
+                  {!canComment && !commentsDisabled && (
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted rounded-xl px-3 py-2 mt-2">
+                      {amIBlocked
+                        ? <><ShieldOff size={12} className="shrink-0" />You have been blocked from commenting in this club.</>
+                        : <><MessageSquare size={12} className="shrink-0" />Commenting is disabled for this club.</>}
+                    </div>
+                  )}
+                </>
               );
             })()}
           </div>
@@ -1688,6 +1743,193 @@ export default function ClubDetailPage() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Comment tree helpers ──────────────────────────────────────────────────────
+
+interface CommentNode extends ClubTopicComment {
+  children: CommentNode[];
+}
+
+function buildCommentTree(flat: ClubTopicComment[]): CommentNode[] {
+  const map = new Map<string, CommentNode>();
+  flat.forEach((c) => map.set(c.id, { ...c, children: [] }));
+  const roots: CommentNode[] = [];
+  flat.forEach((c) => {
+    const node = map.get(c.id)!;
+    if (c.parent_id && map.has(c.parent_id)) {
+      map.get(c.parent_id)!.children.push(node);
+    } else {
+      roots.push(node);
+    }
+  });
+  return roots;
+}
+
+interface CommentThreadProps {
+  comment: CommentNode;
+  depth: number;
+  clubCreatedBy: string | null;
+  myMemberIds: string[];
+  allMembers: FamilyMember[];
+  isOwnerOrAdmin: boolean;
+  blockedMemberIds: string[];
+  canComment: boolean;
+  replyingToId: string | null;
+  replyText: string;
+  submittingComment: boolean;
+  onSetReplying: (id: string | null) => void;
+  onSetReplyText: (v: string) => void;
+  onReply: (parentId: string) => void;
+  onDelete: (id: string) => void;
+  onBlock: (memberId: string) => void;
+  onUnblock: (memberId: string) => void;
+}
+
+const MAX_VISUAL_DEPTH = 5;
+
+function CommentThread({
+  comment, depth, clubCreatedBy, myMemberIds, allMembers,
+  isOwnerOrAdmin, blockedMemberIds, canComment,
+  replyingToId, replyText, submittingComment,
+  onSetReplying, onSetReplyText, onReply, onDelete, onBlock, onUnblock,
+}: CommentThreadProps) {
+  const isReplying = replyingToId === comment.id;
+  const authorIsOwner = comment.author_id === clubCreatedBy;
+  const authorMember = comment.author as FamilyMember | undefined;
+  const isMyComment = myMemberIds.includes(comment.author_id);
+  const visualDepth = Math.min(depth, MAX_VISUAL_DEPTH);
+
+  return (
+    <div style={{ paddingLeft: depth > 0 ? `${Math.min(visualDepth, 4) * 14}px` : 0 }}>
+      <div className="relative">
+        {/* Thread connector line */}
+        {depth > 0 && (
+          <div className="absolute left-[-10px] top-0 bottom-0 w-px bg-border/60" />
+        )}
+
+        {comment.is_deleted ? (
+          <div className="px-3 py-1.5 rounded-lg bg-muted mb-1.5">
+            <p className="text-xs text-muted-foreground italic">[comment removed]</p>
+          </div>
+        ) : (
+          <div className={cn(
+            "rounded-xl border p-3 mb-1.5",
+            authorIsOwner
+              ? "bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800"
+              : "bg-card border-border",
+          )}>
+            <div className="flex items-start gap-2">
+              <span className="text-sm shrink-0 mt-0.5">{authorMember?.avatar_emoji || "👤"}</span>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap mb-1">
+                  <span className="text-xs font-semibold leading-none">{authorMember?.nickname || "Member"}</span>
+                  {authorIsOwner && (
+                    <span className="text-[9px] font-bold uppercase tracking-wide px-1 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400 leading-none">
+                      <Crown size={7} className="inline mr-0.5 -mt-0.5" />Owner
+                    </span>
+                  )}
+                  <span className="text-[10px] text-muted-foreground leading-none">
+                    {new Date(comment.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                  </span>
+                </div>
+                <p className="text-sm text-foreground leading-relaxed">{comment.body}</p>
+
+                {/* Action row */}
+                <div className="flex items-center gap-3 mt-1.5">
+                  {canComment && depth < MAX_VISUAL_DEPTH && (
+                    <button
+                      onClick={() => onSetReplying(isReplying ? null : comment.id)}
+                      className="flex items-center gap-1 text-[11px] font-semibold text-muted-foreground hover:text-primary transition-colors"
+                    >
+                      <CornerDownRight size={11} />
+                      {isReplying ? "Cancel" : "Reply"}
+                    </button>
+                  )}
+                  {comment.children.length > 0 && (
+                    <span className="text-[10px] text-muted-foreground">
+                      {comment.children.length} {comment.children.length === 1 ? "reply" : "replies"}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Owner moderation controls */}
+              {isOwnerOrAdmin && !isMyComment && (
+                <div className="flex items-center gap-0.5 shrink-0">
+                  <button onClick={() => onDelete(comment.id)} title="Remove comment"
+                    className="p-1 text-muted-foreground hover:text-red-500 rounded transition-colors">
+                    <Trash2 size={12} />
+                  </button>
+                  {!blockedMemberIds.includes(comment.author_id) ? (
+                    <button onClick={() => onBlock(comment.author_id)} title="Block from commenting"
+                      className="p-1 text-muted-foreground hover:text-red-500 rounded transition-colors">
+                      <ShieldOff size={12} />
+                    </button>
+                  ) : (
+                    <button onClick={() => onUnblock(comment.author_id)} title="Unblock"
+                      className="p-1 text-muted-foreground hover:text-green-600 rounded transition-colors">
+                      <UserCheck size={12} />
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Inline reply input */}
+        {isReplying && (
+          <div className="flex gap-2 mb-2 ml-2">
+            <input
+              type="text"
+              value={replyText}
+              autoFocus
+              onChange={(e) => onSetReplyText(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && replyText.trim()) { e.preventDefault(); onReply(comment.id); } }}
+              placeholder={`Reply to ${authorMember?.nickname ?? "member"}…`}
+              className="flex-1 px-3 py-2 rounded-xl bg-background border border-border text-sm outline-none focus:ring-2 focus:ring-ring"
+            />
+            <button
+              onClick={() => onReply(comment.id)}
+              disabled={submittingComment || !replyText.trim()}
+              className="px-3 py-2 rounded-xl bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-60 transition-opacity"
+            >
+              {submittingComment ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
+            </button>
+          </div>
+        )}
+
+        {/* Recursive children */}
+        {comment.children.length > 0 && (
+          <div className="space-y-0">
+            {comment.children.map((child) => (
+              <CommentThread
+                key={child.id}
+                comment={child}
+                depth={depth + 1}
+                clubCreatedBy={clubCreatedBy}
+                myMemberIds={myMemberIds}
+                allMembers={allMembers}
+                isOwnerOrAdmin={isOwnerOrAdmin}
+                blockedMemberIds={blockedMemberIds}
+                canComment={canComment}
+                replyingToId={replyingToId}
+                replyText={replyText}
+                submittingComment={submittingComment}
+                onSetReplying={onSetReplying}
+                onSetReplyText={onSetReplyText}
+                onReply={onReply}
+                onDelete={onDelete}
+                onBlock={onBlock}
+                onUnblock={onUnblock}
+              />
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
