@@ -48,7 +48,7 @@ export default function DashboardPage() {
     if (!family) return;
     milestoneCheckedRef.current = false;
     loadData();
-  }, [family]);
+  }, [family?.id]);
 
   async function loadData() {
     setLoading(true);
@@ -124,15 +124,17 @@ export default function DashboardPage() {
 
     const pending = computePendingMilestones(allMembers as FamilyMember[], statsMap, celebratedMap);
     if (pending.length > 0) {
+      // Persist ALL detected milestones immediately so they never reappear on the
+      // next visit, even if the user navigates away before dismissing every modal.
+      await Promise.all(
+        pending.map((p) => markMilestoneCelebrated(p.memberId, p.type, p.value))
+      );
       setMilestoneQueue(pending);
     }
   }
 
   function dismissCurrentMilestone() {
-    const current = milestoneQueue[0];
-    if (current) {
-      markMilestoneCelebrated(current.memberId, current.type, current.value);
-    }
+    // Celebration already persisted in checkMilestones — just advance the queue.
     setMilestoneQueue((q) => q.slice(1));
   }
 
