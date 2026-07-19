@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
+import BookCover from "../components/BookCover";
 import {
   ArrowLeft, ArrowRight, RefreshCw, Search, ChevronDown,
   Printer, Star, Users, BookOpen, FileText, TrendingUp, Home,
@@ -434,9 +435,9 @@ export default function AdminDashboard() {
                       <ArrowRight size={14} className="text-muted-foreground" />
                     </div>
                     <div className="flex gap-3 items-center">
-                      {popularBook.cover_url
-                        ? <img src={popularBook.cover_url} alt={popularBook.title} className="w-12 h-16 object-cover rounded-lg flex-shrink-0 bg-secondary" />
-                        : <div className="w-12 h-16 rounded-lg bg-secondary flex items-center justify-center text-xl flex-shrink-0">📘</div>}
+                      <div className="w-12 h-16 rounded-lg overflow-hidden flex-shrink-0">
+                        <BookCover src={popularBook.cover_url} isbn={popularBook.isbn} title={popularBook.title} className="w-full h-full object-cover" fallbackClassName="w-full h-full" iconSize={18} />
+                      </div>
                       <div className="min-w-0">
                         <p className="font-display font-bold leading-tight line-clamp-2">{popularBook.title}</p>
                         <p className="text-sm text-muted-foreground">{popularBook.author}</p>
@@ -943,9 +944,14 @@ function OverviewWidget({ emoji, label, value, sub, compact = false, onClick }: 
 function BookCard({ book, showPages = false }: { book: BookStat; showPages?: boolean }) {
   return (
     <div className="bg-card border border-border rounded-2xl p-3 flex gap-3">
-      {book.cover_url
-        ? <img src={book.cover_url} alt={book.title} className="w-12 h-16 object-cover rounded-lg flex-shrink-0 bg-secondary" />
-        : <div className="w-12 h-16 rounded-lg bg-secondary flex items-center justify-center text-xl flex-shrink-0">📘</div>}
+      <BookCover
+        src={book.cover_url}
+        isbn={book.isbn}
+        title={book.title}
+        className="w-12 h-16 object-cover rounded-lg flex-shrink-0"
+        fallbackClassName="w-12 h-16 rounded-lg flex-shrink-0"
+        iconSize={18}
+      />
       <div className="flex-1 min-w-0">
         <p className="font-display font-bold text-sm leading-snug line-clamp-2">{book.title}</p>
         <p className="text-xs text-muted-foreground mt-0.5">{book.author}</p>

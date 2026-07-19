@@ -310,6 +310,7 @@ end;
 $$;
 
 -- Per-book stats aggregated across all families
+-- Uses correlated subqueries to avoid cross-join inflation between reading_progress and ratings
 create or replace function public.admin_books_report()
 returns jsonb language plpgsql security definer set search_path = public as $$
 begin
@@ -324,32 +325,31 @@ begin
         'title',             b.title,
         'author',            coalesce(b.author, 'Unknown'),
         'cover_url',         b.cover_url,
+        'isbn',              b.isbn,
         'page_count',        b.page_count,
-        'finished_count',    count(rp.id) filter (where rp.status = 'finished'),
-        'reading_count',     count(rp.id) filter (where rp.status = 'reading'),
-        'want_to_read_count',count(rp.id) filter (where rp.status = 'want_to_read'),
-        'total_interactions',count(rp.id),
-        'avg_rating',        round(avg(r.reader_rating)::numeric, 1),
-        'review_count',      count(r.id) filter (where r.review is not null and r.review <> ''),
+        'finished_count',    (select count(*)::int from reading_progress where book_id = b.id and status = 'finished'),
+        'reading_count',     (select count(*)::int from reading_progress where book_id = b.id and status = 'reading'),
+        'want_to_read_count',(select count(*)::int from reading_progress where book_id = b.id and status = 'want_to_read'),
+        'total_interactions',(select count(*)::int from reading_progress where book_id = b.id),
+        'avg_rating',        (select round(avg(reader_rating)::numeric, 1) from ratings where book_id = b.id and reader_rating is not null),
+        'review_count',      (select count(*)::int from ratings where book_id = b.id and review is not null and review <> ''),
         'age_groups',        (
           select coalesce(jsonb_agg(distinct fm2.age_group) filter (where fm2.age_group is not null), '[]'::jsonb)
           from reading_progress rp2
           join family_members fm2 on fm2.id = rp2.member_id
           where rp2.book_id = b.id
         ),
-        'latest_activity_at', max(rp.updated_at)
+        'latest_activity_at',(select max(updated_at) from reading_progress where book_id = b.id)
       ) as row_data
       from books b
-      left join reading_progress rp on rp.book_id = b.id
-      left join ratings r on r.book_id = b.id
-      group by b.id
-      order by count(rp.id) filter (where rp.status = 'finished') desc nulls last, b.title
+      order by (select count(*) from reading_progress where book_id = b.id and status = 'finished') desc nulls last, b.title
     ) sub
   );
 end;
 $$;
 
 -- Top authors ranked by finishes across all families
+-- Uses correlated subqueries to avoid cross-join inflation between reading_progress and ratings
 create or replace function public.admin_top_authors()
 returns jsonb language plpgsql security definer set search_path = public as $$
 begin
@@ -360,12 +360,24 @@ begin
     select coalesce(jsonb_agg(row_data), '[]'::jsonb)
     from (
       select jsonb_build_object(
-        'author',        b.author,
-        'book_count',    count(distinct b.id)::int,
-        'total_reads',   count(rp.id)::int,
-        'finished_count',count(rp.id) filter (where rp.status = 'finished')::int,
-        'avg_rating',    round(avg(r.reader_rating)::numeric, 1),
-        'age_groups',    (
+        'author',         b.author,
+        'book_count',     count(distinct b.id)::int,
+        'total_reads',    (
+          select count(*)::int
+          from reading_progress rp2 join books b2 on b2.id = rp2.book_id
+          where b2.author = b.author
+        ),
+        'finished_count', (
+          select count(*)::int
+          from reading_progress rp2 join books b2 on b2.id = rp2.book_id
+          where b2.author = b.author and rp2.status = 'finished'
+        ),
+        'avg_rating',     (
+          select round(avg(r2.reader_rating)::numeric, 1)
+          from ratings r2 join books b2 on b2.id = r2.book_id
+          where b2.author = b.author and r2.reader_rating is not null
+        ),
+        'age_groups',     (
           select coalesce(jsonb_agg(distinct fm.age_group) filter (where fm.age_group is not null), '[]'::jsonb)
           from reading_progress rp2
           join books b2 on b2.id = rp2.book_id
@@ -374,11 +386,12 @@ begin
         )
       ) as row_data
       from books b
-      left join reading_progress rp on rp.book_id = b.id
-      left join ratings r on r.book_id = b.id
       where b.author is not null and b.author <> ''
       group by b.author
-      order by count(rp.id) filter (where rp.status = 'finished') desc nulls last, count(distinct b.id) desc
+      order by (
+        select count(*) from reading_progress rp2 join books b2 on b2.id = rp2.book_id
+        where b2.author = b.author and rp2.status = 'finished'
+      ) desc nulls last, count(distinct b.id) desc
       limit 25
     ) sub
   );

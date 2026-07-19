@@ -1,6 +1,6 @@
 import { useNavigate } from "react-router";
-import { BookOpen } from "lucide-react";
 import type { Book, ReadingProgress, Rating, FamilyMember } from "../lib/types";
+import BookCover from "./BookCover";
 
 interface BookCardProps {
   book: Book;
@@ -37,14 +37,14 @@ export default function BookCard({ book, progress = [], ratings = [], members = 
           className="w-20 flex-shrink-0 bg-secondary flex items-center justify-center overflow-hidden"
           style={{ minHeight: compact ? 96 : 120 }}
         >
-          {book.cover_url ? (
-            <img src={book.cover_url} alt={book.title} className="w-full h-full object-cover" loading="lazy" />
-          ) : (
-            <div className="flex flex-col items-center gap-1 p-2 text-muted-foreground">
-              <BookOpen size={24} />
-              <span className="text-[9px] text-center leading-tight font-medium">No cover</span>
-            </div>
-          )}
+          <BookCover
+            src={book.cover_url}
+            isbn={book.isbn}
+            title={book.title}
+            className="w-full h-full object-cover"
+            fallbackClassName="w-full h-full"
+            iconSize={24}
+          />
         </div>
 
         {/* Info */}

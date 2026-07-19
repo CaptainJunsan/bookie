@@ -20,6 +20,7 @@ export interface BookStat {
   title: string;
   author: string;
   cover_url: string | null;
+  isbn: string | null;
   page_count: number | null;
   finished_count: number;
   reading_count: number;

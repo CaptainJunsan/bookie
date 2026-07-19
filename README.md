@@ -1,7 +1,7 @@
 
   # Bookie
 
-  This is a code bundle for Bookie. The original project is available at https://www.figma.com/design/3UyyAsekVIs9iDEeL9B5kB/Bookie.
+  This is a code bundle for Bookie. The original project is available at https://www.figma.com/design/KXuD2WHkO8BqAIifCtFD9Y/Bookie.
 
   ## Running the code
 

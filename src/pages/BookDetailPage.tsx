@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import { useParams, useNavigate } from "react-router";
 import { ArrowLeft, BookOpen, Check, Trash2, Pencil } from "lucide-react";
+import BookCover from "../components/BookCover";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../contexts/AuthContext";
 import StarRating from "../components/StarRating";
@@ -240,13 +241,14 @@ export default function BookDetailPage() {
     <div className="max-w-2xl mx-auto pb-24 lg:pb-10">
       {/* Hero */}
       <div className="relative">
-        {book.cover_url ? (
+        {book.cover_url || book.isbn ? (
           <div className="h-48 overflow-hidden">
-            <img
+            <BookCover
               src={book.cover_url}
-              alt={book.title}
+              isbn={book.isbn}
+              title={book.title}
               className="w-full h-full object-cover"
-              onError={(e) => { (e.currentTarget as HTMLImageElement).closest(".h-48")?.classList.replace("h-48", "h-32"); e.currentTarget.style.display = "none"; }}
+              fallbackClassName="h-32"
             />
             <div className="absolute inset-0 bg-gradient-to-t from-background/95 via-background/40 to-transparent" />
           </div>
@@ -272,13 +274,15 @@ export default function BookDetailPage() {
 
       <div className="px-4 -mt-4 relative">
         <div className="flex gap-4 mb-5">
-          {book.cover_url && (
+          {(book.cover_url || book.isbn) && (
             <div className="w-24 flex-shrink-0 -mt-12 rounded-xl overflow-hidden border-2 border-card shadow-lg bg-secondary">
-              <img
+              <BookCover
                 src={book.cover_url}
-                alt={book.title}
+                isbn={book.isbn}
+                title={book.title}
                 className="w-full aspect-[2/3] object-cover"
-                onError={(e) => { e.currentTarget.style.display = "none"; }}
+                fallbackClassName="w-full aspect-[2/3]"
+                iconSize={20}
               />
             </div>
           )}
