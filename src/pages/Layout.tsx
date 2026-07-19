@@ -112,20 +112,23 @@ export default function Layout() {
         <Outlet />
       </main>
 
+      {/* ── Floating Add Book button (mobile only) ── */}
+      {isAppRoute && (
+        <NavLink
+          to="/books/add"
+          className="fixed bottom-[5.5rem] right-4 z-50 w-14 h-14 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow-xl shadow-primary/35 hover:opacity-90 active:scale-95 transition-all lg:hidden"
+          aria-label="Add new book"
+        >
+          <PlusCircle size={24} />
+        </NavLink>
+      )}
+
       {/* ── Mobile bottom nav ── */}
       {isAppRoute && (
         <nav className="sticky bottom-0 z-40 bg-card border-t border-border pb-safe lg:hidden">
-          <div className="max-w-2xl mx-auto px-2 pt-2 pb-3 flex items-center justify-around">
+          <div className="max-w-2xl mx-auto px-2 pt-2 pb-[22px] flex items-center justify-around">
             <NavItem to="/dashboard" icon={<LayoutDashboard size={20} />} label="Home" />
             <NavItem to="/books" icon={<BookMarked size={20} />} label="Library" />
-
-            <NavLink to="/books/add" className="flex flex-col items-center gap-0.5">
-              <span className="w-12 h-12 -mt-6 rounded-full bg-primary flex items-center justify-center text-primary-foreground shadow-lg shadow-primary/30">
-                <PlusCircle size={22} />
-              </span>
-              <span className="text-[10px] font-semibold text-muted-foreground mt-0.5">Add</span>
-            </NavLink>
-
             <NavItem to="/search" icon={<Search size={20} />} label="Search" />
             <NavItem to="/clubs" icon={<Users size={20} />} label="Clubs" badge={hasClubNotifs} />
             <NavItem to="/settings" icon={<Settings size={20} />} label="Settings" badge={missingAgeGroups} />

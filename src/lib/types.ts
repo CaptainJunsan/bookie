@@ -176,6 +176,8 @@ export interface ClubBook {
   page_count: number | null;
   added_by: string | null;
   added_at: string;
+  is_current_read: boolean;
+  read_target_date: string | null;
 }
 
 export interface ClubReadingProgress {

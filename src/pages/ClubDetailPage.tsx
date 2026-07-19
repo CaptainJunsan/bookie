@@ -3,7 +3,8 @@ import { useParams, useNavigate } from "react-router";
 import {
   ArrowLeft, Users, BookOpen, BarChart2, FileText,
   Globe, Lock, Copy, Check, Plus, X, Loader2,
-  Trash2, Settings, Search, ChevronDown, Download,
+  Trash2, Settings, ChevronDown, Download, Calendar,
+  Crown, BookMarked,
 } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../contexts/AuthContext";
@@ -49,6 +50,16 @@ interface ProgressEntry extends ClubReadingProgress {
   book?: ClubBook;
 }
 
+// Enriched club member row after join
+interface ClubMemberRow {
+  id: string;
+  club_id: string;
+  family_member_id: string;
+  role: ClubRole;
+  joined_at: string;
+  family_members: FamilyMember | null; // null when cross-family RLS blocks it
+}
+
 const APP_URL = typeof window !== "undefined" ? window.location.origin : "";
 
 export default function ClubDetailPage() {
@@ -57,7 +68,7 @@ export default function ClubDetailPage() {
   const navigate = useNavigate();
 
   const [club, setClub] = useState<Club | null>(null);
-  const [clubMembers, setClubMembers] = useState<ClubMember[]>([]);
+  const [clubMembers, setClubMembers] = useState<ClubMemberRow[]>([]);
   const [books, setBooks] = useState<ClubBook[]>([]);
   const [progress, setProgress] = useState<ProgressEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -73,6 +84,12 @@ export default function ClubDetailPage() {
   const [bookPreview, setBookPreview] = useState<Partial<ClubBook> | null>(null);
   const [addingBook, setAddingBook] = useState(false);
 
+  // Group Read
+  const [showGroupReadSheet, setShowGroupReadSheet] = useState(false);
+  const [groupReadBookId, setGroupReadBookId] = useState<string | null>(null);
+  const [groupReadDate, setGroupReadDate] = useState("");
+  const [savingGroupRead, setSavingGroupRead] = useState(false);
+
   // Settings
   const [showSettings, setShowSettings] = useState(false);
   const [editName, setEditName] = useState("");
@@ -81,14 +98,14 @@ export default function ClubDetailPage() {
   const [savingSettings, setSavingSettings] = useState(false);
 
   // Reports
-  const [reportFilter, setReportFilter] = useState<string>("all"); // "all" or member_id
+  const [reportFilter, setReportFilter] = useState<string>("all");
   const [memberReports, setMemberReports] = useState<MemberReport[]>([]);
   const [bookReports, setBookReports] = useState<BookReport[]>([]);
   const [reportsLoading, setReportsLoading] = useState(false);
 
   // Join / add members
   const [showJoinSheet, setShowJoinSheet] = useState(false);
-  const [joiningAs, setJoiningAs] = useState<string[]>([]); // family_member_ids to add
+  const [joiningAs, setJoiningAs] = useState<string[]>([]);
   const [joining, setJoining] = useState(false);
 
   const isOwnerOrAdmin = myRole === "owner" || myRole === "admin";
@@ -109,18 +126,18 @@ export default function ClubDetailPage() {
       setEditDesc(clubData.description || "");
       setEditPublic(clubData.is_public);
 
-      // Club members with family_member details
+      // Club members + family_member profiles (cross-family visible after SQL patch)
       const { data: cm } = await supabase
         .from("club_members")
         .select("*, family_members(*)")
-        .eq("club_id", id);
-      setClubMembers(cm as ClubMember[] || []);
+        .eq("club_id", id)
+        .order("joined_at");
+      const rows = (cm || []) as ClubMemberRow[];
+      setClubMembers(rows);
 
       // My role
-      const myEntry = (cm || []).find((r: { family_member_id: string; role: string }) =>
-        myMemberIds.includes(r.family_member_id),
-      );
-      setMyRole(myEntry ? (myEntry.role as ClubRole) : null);
+      const myEntry = rows.find((r) => myMemberIds.includes(r.family_member_id));
+      setMyRole(myEntry ? myEntry.role : null);
 
       // Books
       const { data: bks } = await supabase
@@ -137,13 +154,11 @@ export default function ClubDetailPage() {
           .from("club_reading_progress")
           .select("*")
           .in("club_book_id", bookIds);
-        const entries: ProgressEntry[] = (prg || []).map((p: ClubReadingProgress) => {
-          const fm = (cm || []).find((r: { family_member_id: string }) =>
-            r.family_member_id === p.member_id,
-          );
-          const bk = bks.find((b: ClubBook) => b.id === p.club_book_id);
-          return { ...p, member: fm?.family_members as FamilyMember | undefined, book: bk };
-        });
+        const entries: ProgressEntry[] = (prg || []).map((p: ClubReadingProgress) => ({
+          ...p,
+          member: rows.find((r) => r.family_member_id === p.member_id)?.family_members ?? undefined,
+          book: bks.find((b: ClubBook) => b.id === p.club_book_id),
+        }));
         setProgress(entries);
       }
 
@@ -192,7 +207,6 @@ export default function ClubDetailPage() {
     setLookingUp(true);
     setBookPreview(null);
     try {
-      // Try ISBN lookup first, then treat as title search
       const isbnLike = bookSearch.replace(/[\s-]/g, "");
       const data = await fetchBookByIsbn(isbnLike);
       if (data) {
@@ -204,7 +218,6 @@ export default function ClubDetailPage() {
           page_count: data.page_count || null,
         });
       } else {
-        // Treat as a manual entry
         setBookPreview({ title: bookSearch.trim(), author: null, isbn: null, cover_url: null, page_count: null });
       }
     } finally {
@@ -231,7 +244,6 @@ export default function ClubDetailPage() {
         .single();
       if (error) throw error;
 
-      // Notify other club members
       const otherMemberIds = clubMembers
         .filter((cm) => !myMemberIds.includes(cm.family_member_id))
         .map((cm) => cm.family_member_id);
@@ -258,6 +270,72 @@ export default function ClubDetailPage() {
     }
   }
 
+  async function handleStartGroupRead(e: React.FormEvent) {
+    e.preventDefault();
+    if (!groupReadBookId || !club) return;
+    setSavingGroupRead(true);
+    try {
+      // Clear any existing group read first
+      await supabase
+        .from("club_books")
+        .update({ is_current_read: false })
+        .eq("club_id", club.id);
+
+      // Set the new one
+      const { error } = await supabase
+        .from("club_books")
+        .update({
+          is_current_read: true,
+          read_target_date: groupReadDate || null,
+        })
+        .eq("id", groupReadBookId);
+      if (error) throw error;
+
+      setBooks((prev) =>
+        prev.map((b) => ({
+          ...b,
+          is_current_read: b.id === groupReadBookId,
+          read_target_date: b.id === groupReadBookId ? groupReadDate || null : b.read_target_date,
+        })),
+      );
+
+      // Notify members
+      const otherIds = clubMembers
+        .filter((cm) => !myMemberIds.includes(cm.family_member_id))
+        .map((cm) => cm.family_member_id);
+      const book = books.find((b) => b.id === groupReadBookId);
+      if (otherIds.length && book) {
+        await supabase.from("club_notifications").insert(
+          otherIds.map((mid) => ({
+            club_id: club.id,
+            member_id: mid,
+            type: "new_book",
+            title: `📖 Group Read started: ${book.title}`,
+          })),
+        );
+      }
+
+      setShowGroupReadSheet(false);
+      setGroupReadBookId(null);
+      setGroupReadDate("");
+      toast.success("Group Read started!");
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Failed to start group read");
+    } finally {
+      setSavingGroupRead(false);
+    }
+  }
+
+  async function handleEndGroupRead(bookId: string) {
+    const { error } = await supabase
+      .from("club_books")
+      .update({ is_current_read: false, read_target_date: null })
+      .eq("id", bookId);
+    if (error) { toast.error("Failed to end group read"); return; }
+    setBooks((prev) => prev.map((b) => b.id === bookId ? { ...b, is_current_read: false, read_target_date: null } : b));
+    toast.success("Group Read ended");
+  }
+
   async function handleUpdateProgress(
     bookId: string,
     newStatus: "want_to_read" | "reading" | "finished",
@@ -280,59 +358,36 @@ export default function ClubDetailPage() {
 
     if (error) { toast.error("Failed to update progress"); return; }
 
-    // Sync to family library (find or create book in family, then upsert progress)
+    // Sync to family library
     if (member && book) {
       try {
         const fm = allMembers.find((m) => m.id === memberId);
         if (fm) {
-          // Find existing family book by ISBN or title+author
           let familyBook = null;
           if (book.isbn) {
-            const { data } = await supabase
-              .from("books")
-              .select("id")
-              .eq("family_id", fm.family_id)
-              .eq("isbn", book.isbn)
-              .maybeSingle();
+            const { data } = await supabase.from("books").select("id")
+              .eq("family_id", fm.family_id).eq("isbn", book.isbn).maybeSingle();
             familyBook = data;
           }
           if (!familyBook) {
-            const { data } = await supabase
-              .from("books")
-              .select("id")
-              .eq("family_id", fm.family_id)
-              .ilike("title", book.title)
-              .maybeSingle();
+            const { data } = await supabase.from("books").select("id")
+              .eq("family_id", fm.family_id).ilike("title", book.title).maybeSingle();
             familyBook = data;
           }
           if (!familyBook) {
-            const { data } = await supabase
-              .from("books")
-              .insert({
-                family_id: fm.family_id,
-                title: book.title,
-                author: book.author,
-                isbn: book.isbn,
-                cover_url: book.cover_url,
-                page_count: book.page_count,
-                added_by: memberId,
-              })
-              .select("id")
-              .single();
+            const { data } = await supabase.from("books").insert({
+              family_id: fm.family_id, title: book.title, author: book.author,
+              isbn: book.isbn, cover_url: book.cover_url, page_count: book.page_count,
+              added_by: memberId,
+            }).select("id").single();
             familyBook = data;
           }
           if (familyBook) {
-            await supabase
-              .from("reading_progress")
-              .upsert(
-                { book_id: familyBook.id, member_id: memberId, ...updates },
-                { onConflict: "book_id,member_id" },
-              );
+            await supabase.from("reading_progress")
+              .upsert({ book_id: familyBook.id, member_id: memberId, ...updates }, { onConflict: "book_id,member_id" });
           }
         }
-      } catch {
-        // Sync failure is non-critical; don't block the UI
-      }
+      } catch { /* sync failure non-critical */ }
     }
 
     setProgress((prev) => {
@@ -350,11 +405,7 @@ export default function ClubDetailPage() {
         book: books.find((b) => b.id === bookId),
         member: allMembers.find((m) => m.id === memberId),
       };
-      if (existing >= 0) {
-        const next = [...prev];
-        next[existing] = entry;
-        return next;
-      }
+      if (existing >= 0) { const next = [...prev]; next[existing] = entry; return next; }
       return [...prev, entry];
     });
   }
@@ -369,21 +420,14 @@ export default function ClubDetailPage() {
         role: "member" as ClubRole,
       }));
       const { error } = await supabase.from("club_members").insert(rows);
-      // 23505 = unique_violation: member already in club — treat as success
       if (error && error.code !== "23505") throw error;
 
-      // Notify existing members
       const existingIds = clubMembers.map((cm) => cm.family_member_id);
       if (existingIds.length) {
-        const names = joiningAs
-          .map((id) => allMembers.find((m) => m.id === id)?.nickname)
-          .filter(Boolean)
-          .join(", ");
+        const names = joiningAs.map((mid) => allMembers.find((m) => m.id === mid)?.nickname).filter(Boolean).join(", ");
         await supabase.from("club_notifications").insert(
           existingIds.map((mid) => ({
-            club_id: club.id,
-            member_id: mid,
-            type: "new_member",
+            club_id: club.id, member_id: mid, type: "new_member",
             title: `👋 ${names} joined ${club.name}`,
           })),
         );
@@ -424,24 +468,18 @@ export default function ClubDetailPage() {
   async function handleLeaveClub() {
     if (!club) return;
     const myEntries = clubMembers.filter((cm) => myMemberIds.includes(cm.family_member_id));
-    for (const e of myEntries) {
-      await supabase.from("club_members").delete().eq("id", e.id);
-    }
+    for (const e of myEntries) await supabase.from("club_members").delete().eq("id", e.id);
     toast.success(`Left ${club.name}`);
     navigate("/clubs");
   }
 
   function exportCSV() {
-    const filteredReports = reportFilter === "all"
+    const filtered = reportFilter === "all"
       ? memberReports
       : memberReports.filter((r) => r.member_id === reportFilter);
-
     const rows = [
       ["Member", "Role", "Club Role", "Age Group", "Books Finished", "Books Reading", "Want to Read", "Pages Read"],
-      ...filteredReports.map((r) => [
-        r.nickname, r.role, r.club_role, r.age_group || "—",
-        r.books_finished, r.books_reading, r.books_want, r.pages_read,
-      ]),
+      ...filtered.map((r) => [r.nickname, r.role, r.club_role, r.age_group || "—", r.books_finished, r.books_reading, r.books_want, r.pages_read]),
     ];
     const csv = rows.map((r) => r.map(String).map((v) => `"${v}"`).join(",")).join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
@@ -453,11 +491,25 @@ export default function ClubDetailPage() {
     URL.revokeObjectURL(url);
   }
 
+  // Helper: resolve display name + avatar for a club member row
+  function resolveProfile(cm: ClubMemberRow): { nickname: string; avatar: string; familyRole: string } {
+    if (cm.family_members) {
+      return {
+        nickname: cm.family_members.nickname,
+        avatar: cm.family_members.avatar_emoji,
+        familyRole: cm.family_members.role,
+      };
+    }
+    // Cross-family member not yet visible (run clubs_schema_patch.sql to fix)
+    const local = allMembers.find((m) => m.id === cm.family_member_id);
+    if (local) return { nickname: local.nickname, avatar: local.avatar_emoji, familyRole: local.role };
+    return { nickname: "Club member", avatar: "👤", familyRole: "" };
+  }
+
   const amIMember = myRole !== null;
   const notInClub = !amIMember;
-  const membersNotInClub = allMembers.filter(
-    (m) => !clubMembers.find((cm) => cm.family_member_id === m.id),
-  );
+  const membersNotInClub = allMembers.filter((m) => !clubMembers.find((cm) => cm.family_member_id === m.id));
+  const currentRead = books.find((b) => b.is_current_read);
 
   if (loading) {
     return (
@@ -491,20 +543,16 @@ export default function ClubDetailPage() {
             <div className="flex-1 min-w-0">
               <div className="flex items-start justify-between gap-2">
                 <h1 className="font-display text-xl font-bold text-foreground leading-tight">{club.name}</h1>
-                <div className="flex items-center gap-1.5 shrink-0">
-                  {isOwnerOrAdmin && (
-                    <button
-                      onClick={() => setShowSettings(true)}
-                      className="p-2 rounded-xl text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-                    >
-                      <Settings size={16} />
-                    </button>
-                  )}
-                </div>
+                {isOwnerOrAdmin && (
+                  <button
+                    onClick={() => setShowSettings(true)}
+                    className="p-2 rounded-xl text-muted-foreground hover:bg-muted hover:text-foreground transition-colors shrink-0"
+                  >
+                    <Settings size={16} />
+                  </button>
+                )}
               </div>
-              {club.description && (
-                <p className="text-sm text-muted-foreground mt-1">{club.description}</p>
-              )}
+              {club.description && <p className="text-sm text-muted-foreground mt-1">{club.description}</p>}
               <div className="flex items-center gap-3 mt-2 flex-wrap">
                 <span className="flex items-center gap-1 text-xs text-muted-foreground">
                   {club.is_public ? <Globe size={11} /> : <Lock size={11} />}
@@ -522,7 +570,7 @@ export default function ClubDetailPage() {
             </div>
           </div>
 
-          {/* Invite link + join/leave */}
+          {/* Actions */}
           <div className="mt-4 pt-4 border-t border-border flex flex-wrap gap-2">
             {amIMember && (
               <button
@@ -553,6 +601,31 @@ export default function ClubDetailPage() {
           </div>
         </div>
 
+        {/* ── Group Read banner ── */}
+        {currentRead && (
+          <div className="bg-primary/8 border border-primary/20 rounded-2xl p-4 mb-4 flex items-center gap-3">
+            <BookMarked size={20} className="text-primary shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-bold uppercase tracking-wide text-primary mb-0.5">Currently reading together</p>
+              <p className="font-semibold text-sm text-foreground line-clamp-1">{currentRead.title}</p>
+              {currentRead.read_target_date && (
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  <Calendar size={10} className="inline mr-1" />
+                  Target: {new Date(currentRead.read_target_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                </p>
+              )}
+            </div>
+            {isOwnerOrAdmin && (
+              <button
+                onClick={() => handleEndGroupRead(currentRead.id)}
+                className="text-xs text-muted-foreground hover:text-red-500 transition-colors shrink-0 px-2 py-1 rounded-lg hover:bg-red-50"
+              >
+                End
+              </button>
+            )}
+          </div>
+        )}
+
         {/* Tabs */}
         <div className="flex gap-1 bg-muted rounded-xl p-1 mb-5">
           {(["books", "members", "progress", "reports"] as Tab[]).map((t) => (
@@ -561,9 +634,7 @@ export default function ClubDetailPage() {
               onClick={() => setActiveTab(t)}
               className={cn(
                 "flex-1 py-2 text-xs font-semibold rounded-lg transition-all capitalize",
-                activeTab === t
-                  ? "bg-card text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground",
+                activeTab === t ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
               )}
             >
               {t === "books" && <BookOpen size={12} className="inline mr-1 -mt-0.5" />}
@@ -579,13 +650,24 @@ export default function ClubDetailPage() {
         {activeTab === "books" && (
           <div>
             {amIMember && (
-              <button
-                onClick={() => setShowAddBook(true)}
-                className="flex items-center gap-2 w-full px-4 py-3 border-2 border-dashed border-border rounded-2xl text-sm font-semibold text-muted-foreground hover:border-primary hover:text-primary transition-colors mb-4"
-              >
-                <Plus size={16} />
-                Add a book to this club
-              </button>
+              <div className="flex gap-2 mb-4">
+                <button
+                  onClick={() => setShowAddBook(true)}
+                  className="flex-1 flex items-center gap-2 px-4 py-3 border-2 border-dashed border-border rounded-2xl text-sm font-semibold text-muted-foreground hover:border-primary hover:text-primary transition-colors"
+                >
+                  <Plus size={16} />
+                  Add a book
+                </button>
+                {isOwnerOrAdmin && books.length > 0 && (
+                  <button
+                    onClick={() => setShowGroupReadSheet(true)}
+                    className="flex items-center gap-2 px-4 py-3 border-2 border-dashed border-primary/40 rounded-2xl text-sm font-semibold text-primary hover:border-primary hover:bg-primary/5 transition-colors"
+                  >
+                    <BookMarked size={16} />
+                    Group Read
+                  </button>
+                )}
+              </div>
             )}
             {books.length === 0 ? (
               <div className="text-center py-12">
@@ -619,22 +701,13 @@ export default function ClubDetailPage() {
         {/* ── Tab: Members ── */}
         {activeTab === "members" && (
           <div>
-            {notInClub && (
+            {(notInClub || (amIMember && membersNotInClub.length > 0)) && (
               <button
                 onClick={() => setShowJoinSheet(true)}
                 className="flex items-center gap-2 w-full px-4 py-3 border-2 border-dashed border-border rounded-2xl text-sm font-semibold text-muted-foreground hover:border-primary hover:text-primary transition-colors mb-4"
               >
                 <Plus size={16} />
-                Add yourself or family members
-              </button>
-            )}
-            {amIMember && membersNotInClub.length > 0 && (
-              <button
-                onClick={() => setShowJoinSheet(true)}
-                className="flex items-center gap-2 w-full px-4 py-3 border-2 border-dashed border-border rounded-2xl text-sm font-semibold text-muted-foreground hover:border-primary hover:text-primary transition-colors mb-4"
-              >
-                <Plus size={16} />
-                Add more family members
+                {notInClub ? "Add yourself or family members" : "Add more family members"}
               </button>
             )}
             {clubMembers.length === 0 ? (
@@ -645,20 +718,29 @@ export default function ClubDetailPage() {
             ) : (
               <div className="space-y-2">
                 {clubMembers.map((cm) => {
-                  const fm = cm.family_members as unknown as FamilyMember;
+                  const { nickname, avatar, familyRole } = resolveProfile(cm);
                   const isMe = myMemberIds.includes(cm.family_member_id);
+                  const isOwnerRow = cm.role === "owner";
                   return (
                     <div key={cm.id} className="flex items-center gap-3 p-3 bg-card border border-border rounded-xl">
-                      <span className="text-2xl">{fm?.avatar_emoji || "👤"}</span>
+                      <span className="text-2xl">{avatar}</span>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-semibold text-sm">{fm?.nickname || "—"}</span>
-                          <span className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">{cm.role}</span>
+                          <span className="font-semibold text-sm">{nickname}</span>
+                          {isOwnerRow && (
+                            <span className="flex items-center gap-0.5 text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">
+                              <Crown size={9} />
+                              Owner
+                            </span>
+                          )}
+                          {cm.role === "admin" && (
+                            <span className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700">Admin</span>
+                          )}
                           {isMe && <span className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-primary/10 text-primary">You</span>}
                         </div>
-                        <p className="text-xs text-muted-foreground">{fm?.role}</p>
+                        {familyRole && <p className="text-xs text-muted-foreground">{familyRole}</p>}
                       </div>
-                      {isOwnerOrAdmin && !isMe && cm.role !== "owner" && (
+                      {isOwnerOrAdmin && !isMe && !isOwnerRow && (
                         <button
                           onClick={() => handleRemoveMember(cm.id)}
                           className="p-1.5 text-muted-foreground hover:text-red-500 transition-colors rounded-lg"
@@ -698,7 +780,14 @@ export default function ClubDetailPage() {
                           className="w-10 h-14 rounded-md object-cover shrink-0"
                         />
                         <div className="flex-1 min-w-0">
-                          <p className="font-semibold text-sm leading-tight line-clamp-1">{book.title}</p>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <p className="font-semibold text-sm leading-tight line-clamp-1">{book.title}</p>
+                            {book.is_current_read && (
+                              <span className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-primary/10 text-primary shrink-0">
+                                Group Read
+                              </span>
+                            )}
+                          </div>
                           {book.author && <p className="text-xs text-muted-foreground">{book.author}</p>}
                           <div className="mt-1.5">
                             <div className="flex items-center justify-between text-xs text-muted-foreground mb-0.5">
@@ -716,21 +805,18 @@ export default function ClubDetailPage() {
                       </div>
                       <div className="space-y-1.5">
                         {clubMembers.map((cm) => {
-                          const fm = cm.family_members as unknown as FamilyMember;
+                          const { nickname, avatar } = resolveProfile(cm);
                           const prg = bookProgress.find((p) => p.member_id === cm.family_member_id);
                           const pct = book.page_count && prg?.current_page
                             ? Math.min(100, Math.round((prg.current_page / book.page_count) * 100))
                             : 0;
                           return (
                             <div key={cm.id} className="flex items-center gap-2">
-                              <span className="text-sm">{fm?.avatar_emoji || "👤"}</span>
-                              <span className="text-xs text-muted-foreground w-20 truncate">{fm?.nickname}</span>
+                              <span className="text-sm">{avatar}</span>
+                              <span className="text-xs text-muted-foreground w-20 truncate">{nickname}</span>
                               <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
                                 <div
-                                  className={cn(
-                                    "h-full rounded-full transition-all",
-                                    prg?.status === "finished" ? "bg-primary" : "bg-amber-400",
-                                  )}
+                                  className={cn("h-full rounded-full transition-all", prg?.status === "finished" ? "bg-primary" : "bg-amber-400")}
                                   style={{ width: `${prg?.status === "finished" ? 100 : pct}%` }}
                                 />
                               </div>
@@ -753,25 +839,21 @@ export default function ClubDetailPage() {
         {activeTab === "reports" && (
           <div>
             <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <div className="relative">
-                  <select
-                    value={reportFilter}
-                    onChange={(e) => setReportFilter(e.target.value)}
-                    className="appearance-none text-xs font-semibold bg-card border border-border rounded-xl pl-3 pr-8 py-2 outline-none focus:ring-2 focus:ring-ring"
-                  >
-                    <option value="all">All members</option>
-                    {clubMembers.map((cm) => {
-                      const fm = cm.family_members as unknown as FamilyMember;
-                      return (
-                        <option key={cm.family_member_id} value={cm.family_member_id}>
-                          {fm?.nickname || cm.family_member_id}
-                        </option>
-                      );
-                    })}
-                  </select>
-                  <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
-                </div>
+              <div className="relative">
+                <select
+                  value={reportFilter}
+                  onChange={(e) => setReportFilter(e.target.value)}
+                  className="appearance-none text-xs font-semibold bg-card border border-border rounded-xl pl-3 pr-8 py-2 outline-none focus:ring-2 focus:ring-ring"
+                >
+                  <option value="all">All members</option>
+                  {clubMembers.map((cm) => {
+                    const { nickname } = resolveProfile(cm);
+                    return (
+                      <option key={cm.family_member_id} value={cm.family_member_id}>{nickname}</option>
+                    );
+                  })}
+                </select>
+                <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
               </div>
               <button
                 onClick={exportCSV}
@@ -788,7 +870,6 @@ export default function ClubDetailPage() {
               </div>
             ) : (
               <>
-                {/* Member stats */}
                 <section className="mb-6">
                   <h3 className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-3">Reading Progress</h3>
                   <div className="space-y-2">
@@ -818,19 +899,13 @@ export default function ClubDetailPage() {
                   </div>
                 </section>
 
-                {/* Book stats */}
                 {reportFilter === "all" && (
                   <section>
                     <h3 className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-3">Books in Club</h3>
                     <div className="space-y-2">
                       {bookReports.map((r) => (
                         <div key={r.book_id} className="bg-card border border-border rounded-xl p-3 flex items-center gap-3">
-                          <BookCover
-                            src={r.cover_url || undefined}
-                            isbn={r.isbn || undefined}
-                            title={r.title}
-                            className="w-8 h-12 rounded object-cover shrink-0"
-                          />
+                          <BookCover src={r.cover_url || undefined} isbn={r.isbn || undefined} title={r.title} className="w-8 h-12 rounded object-cover shrink-0" />
                           <div className="flex-1 min-w-0">
                             <p className="font-semibold text-sm line-clamp-1">{r.title}</p>
                             {r.author && <p className="text-xs text-muted-foreground">{r.author}</p>}
@@ -863,11 +938,8 @@ export default function ClubDetailPage() {
           <div className="relative w-full max-w-md bg-card rounded-t-3xl lg:rounded-2xl border border-border shadow-2xl p-6 z-10">
             <div className="flex items-center justify-between mb-5">
               <h2 className="font-display text-xl font-bold">Add a Book</h2>
-              <button onClick={() => { setShowAddBook(false); setBookPreview(null); setBookSearch(""); }} className="text-muted-foreground hover:text-foreground">
-                <X size={20} />
-              </button>
+              <button onClick={() => { setShowAddBook(false); setBookPreview(null); setBookSearch(""); }} className="text-muted-foreground hover:text-foreground"><X size={20} /></button>
             </div>
-
             <div className="flex gap-2 mb-4">
               <input
                 type="text"
@@ -882,34 +954,23 @@ export default function ClubDetailPage() {
                 disabled={lookingUp || !bookSearch.trim()}
                 className="px-3 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 disabled:opacity-60 flex items-center gap-1.5"
               >
-                {lookingUp ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
+                {lookingUp ? <Loader2 size={14} className="animate-spin" /> : <BookOpen size={14} />}
               </button>
             </div>
-
-            {bookPreview && (
+            {bookPreview ? (
               <div className="bg-background border border-border rounded-xl p-3 flex gap-3 mb-4">
-                <BookCover
-                  src={bookPreview.cover_url || undefined}
-                  isbn={bookPreview.isbn || undefined}
-                  title={bookPreview.title}
-                  className="w-12 h-16 rounded object-cover shrink-0"
-                />
+                <BookCover src={bookPreview.cover_url || undefined} isbn={bookPreview.isbn || undefined} title={bookPreview.title} className="w-12 h-16 rounded object-cover shrink-0" />
                 <div className="flex-1 min-w-0">
                   <p className="font-semibold text-sm leading-tight">{bookPreview.title}</p>
                   {bookPreview.author && <p className="text-xs text-muted-foreground">{bookPreview.author}</p>}
                   {bookPreview.page_count && <p className="text-xs text-muted-foreground">{bookPreview.page_count} pages</p>}
                 </div>
               </div>
-            )}
-
-            {!bookPreview && (
+            ) : (
               <div className="bg-muted rounded-xl p-3 mb-4">
-                <p className="text-xs text-muted-foreground">
-                  Enter an ISBN number or a book title and press the search button. The book metadata will be looked up automatically.
-                </p>
+                <p className="text-xs text-muted-foreground">Enter an ISBN or book title and press search. Metadata is looked up automatically.</p>
               </div>
             )}
-
             <button
               onClick={handleAddBook}
               disabled={addingBook || !bookPreview}
@@ -922,6 +983,69 @@ export default function ClubDetailPage() {
         </div>
       )}
 
+      {/* ── Group Read Sheet ── */}
+      {showGroupReadSheet && (
+        <div className="fixed inset-0 z-50 flex items-end lg:items-center justify-center">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowGroupReadSheet(false)} />
+          <div className="relative w-full max-w-md bg-card rounded-t-3xl lg:rounded-2xl border border-border shadow-2xl p-6 z-10">
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="font-display text-xl font-bold">Start a Group Read</h2>
+              <button onClick={() => setShowGroupReadSheet(false)} className="text-muted-foreground hover:text-foreground"><X size={20} /></button>
+            </div>
+            <p className="text-sm text-muted-foreground mb-5">
+              Pick the book the whole club will read together. Everyone's progress will be highlighted and tracked collectively.
+            </p>
+            <form onSubmit={handleStartGroupRead} className="space-y-4">
+              <div>
+                <label className="block text-sm font-semibold mb-2">Select a book</label>
+                <div className="space-y-2 max-h-52 overflow-y-auto">
+                  {books.map((b) => (
+                    <button
+                      key={b.id}
+                      type="button"
+                      onClick={() => setGroupReadBookId(b.id)}
+                      className={cn(
+                        "w-full flex items-center gap-3 p-3 rounded-xl border transition-all text-left",
+                        groupReadBookId === b.id ? "border-primary bg-primary/5" : "border-border bg-background hover:border-primary/40",
+                      )}
+                    >
+                      <BookCover src={b.cover_url || undefined} isbn={b.isbn || undefined} title={b.title} className="w-8 h-12 rounded object-cover shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-sm line-clamp-1">{b.title}</p>
+                        {b.author && <p className="text-xs text-muted-foreground">{b.author}</p>}
+                      </div>
+                      <div className={cn("w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0", groupReadBookId === b.id ? "border-primary bg-primary" : "border-muted-foreground")}>
+                        {groupReadBookId === b.id && <Check size={11} className="text-primary-foreground" />}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-semibold mb-1.5">
+                  Target finish date <span className="text-muted-foreground font-normal">(optional)</span>
+                </label>
+                <input
+                  type="date"
+                  value={groupReadDate}
+                  onChange={(e) => setGroupReadDate(e.target.value)}
+                  min={new Date().toISOString().split("T")[0]}
+                  className="w-full px-4 py-2.5 rounded-xl bg-background border border-border text-sm outline-none focus:ring-2 focus:ring-ring"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={savingGroupRead || !groupReadBookId}
+                className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-bold text-sm hover:opacity-90 disabled:opacity-60 flex items-center justify-center gap-2"
+              >
+                {savingGroupRead ? <Loader2 size={16} className="animate-spin" /> : <BookMarked size={16} />}
+                Start Group Read
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* ── Join / Add Members Sheet ── */}
       {showJoinSheet && (
         <div className="fixed inset-0 z-50 flex items-end lg:items-center justify-center">
@@ -929,14 +1053,11 @@ export default function ClubDetailPage() {
           <div className="relative w-full max-w-md bg-card rounded-t-3xl lg:rounded-2xl border border-border shadow-2xl p-6 z-10">
             <div className="flex items-center justify-between mb-2">
               <h2 className="font-display text-xl font-bold">Join Club</h2>
-              <button onClick={() => setShowJoinSheet(false)} className="text-muted-foreground hover:text-foreground">
-                <X size={20} />
-              </button>
+              <button onClick={() => setShowJoinSheet(false)} className="text-muted-foreground hover:text-foreground"><X size={20} /></button>
             </div>
             <p className="text-sm text-muted-foreground mb-5">
-              Select which family members will join <strong>{club.name}</strong>. You can join as yourself, on behalf of your kids, or add any family members.
+              Select which family members will join <strong>{club.name}</strong>. Join as yourself, on behalf of your kids, or add any family members.
             </p>
-
             <div className="space-y-2 mb-5">
               {membersNotInClub.length === 0 ? (
                 <p className="text-sm text-muted-foreground text-center py-4">All family members are already in this club.</p>
@@ -946,14 +1067,10 @@ export default function ClubDetailPage() {
                   return (
                     <button
                       key={fm.id}
-                      onClick={() => setJoiningAs((prev) =>
-                        selected ? prev.filter((id) => id !== fm.id) : [...prev, fm.id],
-                      )}
+                      onClick={() => setJoiningAs((prev) => selected ? prev.filter((x) => x !== fm.id) : [...prev, fm.id])}
                       className={cn(
                         "w-full flex items-center gap-3 p-3 rounded-xl border transition-all text-left",
-                        selected
-                          ? "border-primary bg-primary/5"
-                          : "border-border bg-background hover:border-primary/40",
+                        selected ? "border-primary bg-primary/5" : "border-border bg-background hover:border-primary/40",
                       )}
                     >
                       <span className="text-2xl">{fm.avatar_emoji}</span>
@@ -961,10 +1078,7 @@ export default function ClubDetailPage() {
                         <p className="font-semibold text-sm">{fm.nickname}</p>
                         <p className="text-xs text-muted-foreground">{fm.role}{fm.is_child ? " · child" : ""}</p>
                       </div>
-                      <div className={cn(
-                        "w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors",
-                        selected ? "border-primary bg-primary" : "border-muted-foreground",
-                      )}>
+                      <div className={cn("w-5 h-5 rounded-full border-2 flex items-center justify-center", selected ? "border-primary bg-primary" : "border-muted-foreground")}>
                         {selected && <Check size={11} className="text-primary-foreground" />}
                       </div>
                     </button>
@@ -972,7 +1086,6 @@ export default function ClubDetailPage() {
                 })
               )}
             </div>
-
             <button
               onClick={handleJoinClub}
               disabled={joining || joiningAs.length === 0}
@@ -992,68 +1105,40 @@ export default function ClubDetailPage() {
           <div className="relative w-full max-w-md bg-card rounded-t-3xl lg:rounded-2xl border border-border shadow-2xl p-6 z-10">
             <div className="flex items-center justify-between mb-5">
               <h2 className="font-display text-xl font-bold">Club Settings</h2>
-              <button onClick={() => setShowSettings(false)} className="text-muted-foreground hover:text-foreground">
-                <X size={20} />
-              </button>
+              <button onClick={() => setShowSettings(false)} className="text-muted-foreground hover:text-foreground"><X size={20} /></button>
             </div>
             <form onSubmit={handleSaveSettings} className="space-y-4">
               <div>
                 <label className="block text-sm font-semibold mb-1.5">Club name</label>
-                <input
-                  type="text"
-                  required
-                  value={editName}
-                  onChange={(e) => setEditName(e.target.value)}
-                  className="w-full px-4 py-2.5 rounded-xl bg-background border border-border text-sm outline-none focus:ring-2 focus:ring-ring"
-                />
+                <input type="text" required value={editName} onChange={(e) => setEditName(e.target.value)}
+                  className="w-full px-4 py-2.5 rounded-xl bg-background border border-border text-sm outline-none focus:ring-2 focus:ring-ring" />
               </div>
               <div>
                 <label className="block text-sm font-semibold mb-1.5">Description</label>
-                <textarea
-                  value={editDesc}
-                  onChange={(e) => setEditDesc(e.target.value)}
-                  rows={2}
-                  className="w-full px-4 py-2.5 rounded-xl bg-background border border-border text-sm outline-none focus:ring-2 focus:ring-ring resize-none"
-                />
+                <textarea value={editDesc} onChange={(e) => setEditDesc(e.target.value)} rows={2}
+                  className="w-full px-4 py-2.5 rounded-xl bg-background border border-border text-sm outline-none focus:ring-2 focus:ring-ring resize-none" />
               </div>
               <div className="flex items-center gap-3 p-3 bg-muted rounded-xl">
                 <div className="flex-1">
                   <p className="text-sm font-semibold">{editPublic ? "Public" : "Private / invite-only"}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {editPublic ? "Anyone can find and join." : "Only invite link holders can join."}
-                  </p>
+                  <p className="text-xs text-muted-foreground">{editPublic ? "Anyone can find and join." : "Only invite link holders can join."}</p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setEditPublic(!editPublic)}
-                  className={`relative w-12 h-6 rounded-full transition-colors flex-shrink-0 ${editPublic ? "bg-primary" : "bg-border"}`}
-                >
+                <button type="button" onClick={() => setEditPublic(!editPublic)}
+                  className={`relative w-12 h-6 rounded-full transition-colors flex-shrink-0 ${editPublic ? "bg-primary" : "bg-border"}`}>
                   <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${editPublic ? "translate-x-6" : ""}`} />
                 </button>
               </div>
-
-              {/* Invite link for owner */}
               <div className="bg-background border border-border rounded-xl p-3">
                 <p className="text-xs font-semibold text-muted-foreground mb-1.5">Invite link</p>
                 <div className="flex items-center gap-2">
-                  <p className="text-xs text-foreground flex-1 truncate font-mono">
-                    {APP_URL}/clubs/invite/{club.invite_token}
-                  </p>
-                  <button
-                    type="button"
-                    onClick={handleCopyInvite}
-                    className="text-muted-foreground hover:text-primary p-1"
-                  >
+                  <p className="text-xs text-foreground flex-1 truncate font-mono">{APP_URL}/clubs/invite/{club.invite_token}</p>
+                  <button type="button" onClick={handleCopyInvite} className="text-muted-foreground hover:text-primary p-1">
                     {copied ? <Check size={13} /> : <Copy size={13} />}
                   </button>
                 </div>
               </div>
-
-              <button
-                type="submit"
-                disabled={savingSettings}
-                className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-bold text-sm hover:opacity-90 disabled:opacity-60 flex items-center justify-center gap-2"
-              >
+              <button type="submit" disabled={savingSettings}
+                className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-bold text-sm hover:opacity-90 disabled:opacity-60 flex items-center justify-center gap-2">
                 {savingSettings ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
                 Save Changes
               </button>
@@ -1067,20 +1152,13 @@ export default function ClubDetailPage() {
 
 // ── ClubBookRow ───────────────────────────────────────────────────────────────
 function ClubBookRow({
-  book,
-  progress,
-  myMemberIds,
-  allMembers,
-  clubMembers,
-  onUpdateProgress,
-  isManager,
-  onRemove,
+  book, progress, myMemberIds, allMembers, clubMembers, onUpdateProgress, isManager, onRemove,
 }: {
   book: ClubBook;
   progress: ProgressEntry[];
   myMemberIds: string[];
   allMembers: FamilyMember[];
-  clubMembers: ClubMember[];
+  clubMembers: ClubMemberRow[];
   onUpdateProgress: (bookId: string, status: "want_to_read" | "reading" | "finished", memberId: string, page?: number) => void;
   isManager: boolean;
   onRemove: () => void;
@@ -1091,19 +1169,21 @@ function ClubBookRow({
   const pct = totalMembers ? Math.round((finishedCount / totalMembers) * 100) : 0;
 
   return (
-    <div className="bg-card border border-border rounded-2xl overflow-hidden">
+    <div className={cn("bg-card border rounded-2xl overflow-hidden transition-colors", book.is_current_read ? "border-primary/30" : "border-border")}>
       <button
         onClick={() => setExpanded(!expanded)}
         className="w-full flex items-center gap-3 p-4 text-left hover:bg-muted/50 transition-colors"
       >
-        <BookCover
-          src={book.cover_url || undefined}
-          isbn={book.isbn || undefined}
-          title={book.title}
-          className="w-10 h-14 rounded object-cover shrink-0"
-        />
+        <BookCover src={book.cover_url || undefined} isbn={book.isbn || undefined} title={book.title} className="w-10 h-14 rounded object-cover shrink-0" />
         <div className="flex-1 min-w-0">
-          <p className="font-semibold text-sm leading-tight line-clamp-1">{book.title}</p>
+          <div className="flex items-center gap-1.5 flex-wrap mb-0.5">
+            <p className="font-semibold text-sm leading-tight line-clamp-1">{book.title}</p>
+            {book.is_current_read && (
+              <span className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-primary/10 text-primary shrink-0">
+                Group Read
+              </span>
+            )}
+          </div>
           {book.author && <p className="text-xs text-muted-foreground">{book.author}</p>}
           <div className="flex items-center gap-2 mt-1.5">
             <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
@@ -1111,13 +1191,17 @@ function ClubBookRow({
             </div>
             <span className="text-[10px] text-muted-foreground shrink-0">{finishedCount}/{totalMembers} done</span>
           </div>
+          {book.is_current_read && book.read_target_date && (
+            <p className="text-[10px] text-primary mt-0.5">
+              <Calendar size={9} className="inline mr-0.5" />
+              Due {new Date(book.read_target_date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+            </p>
+          )}
         </div>
         <div className="flex items-center gap-1 shrink-0">
           {isManager && (
-            <button
-              onClick={(e) => { e.stopPropagation(); onRemove(); }}
-              className="p-1.5 text-muted-foreground hover:text-red-500 rounded-lg transition-colors"
-            >
+            <button onClick={(e) => { e.stopPropagation(); onRemove(); }}
+              className="p-1.5 text-muted-foreground hover:text-red-500 rounded-lg transition-colors">
               <Trash2 size={14} />
             </button>
           )}
@@ -1178,4 +1262,3 @@ function ClubBookRow({
     </div>
   );
 }
-
