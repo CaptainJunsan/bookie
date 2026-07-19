@@ -46,6 +46,39 @@ export function crossedMilestones(
   return thresholds.filter((v) => v <= count && !celebratedValues.has(v));
 }
 
+// ── localStorage cache ────────────────────────────────────────────────────────
+// Primary guard against re-showing milestones. Survives component remounts and
+// page refreshes. The DB is a secondary cross-device store.
+
+function lsKey(familyId: string) {
+  return `bookie_celebrated_${familyId}`;
+}
+
+export function getLocalCelebrated(familyId: string): Set<string> {
+  try {
+    const raw = localStorage.getItem(lsKey(familyId));
+    return new Set<string>(raw ? (JSON.parse(raw) as string[]) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+export function markLocalCelebrated(familyId: string, key: string): void {
+  try {
+    const set = getLocalCelebrated(familyId);
+    set.add(key);
+    localStorage.setItem(lsKey(familyId), JSON.stringify([...set]));
+  } catch {
+    // localStorage unavailable — non-critical
+  }
+}
+
+export function milestoneKey(memberId: string, type: MilestoneType, value: number): string {
+  return `${memberId}:${type}:${value}`;
+}
+
+// ── DB helpers ────────────────────────────────────────────────────────────────
+
 export async function fetchCelebratedMilestones(
   memberIds: string[]
 ): Promise<Record<string, Record<MilestoneType, Set<number>>>> {
@@ -82,7 +115,7 @@ export async function markMilestoneCelebrated(
       { onConflict: "member_id,milestone_type,milestone_value", ignoreDuplicates: true }
     );
   } catch {
-    // silently ignore — not critical
+    // silently ignore — localStorage is the primary guard
   }
 }
 

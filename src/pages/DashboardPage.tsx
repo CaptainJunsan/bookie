@@ -10,6 +10,9 @@ import {
   computePendingMilestones,
   fetchCelebratedMilestones,
   markMilestoneCelebrated,
+  getLocalCelebrated,
+  markLocalCelebrated,
+  milestoneKey,
   type PendingMilestone,
 } from "../lib/milestones";
 import type { Book, ReadingProgress, Rating, FamilyMember } from "../lib/types";
@@ -114,7 +117,13 @@ export default function DashboardPage() {
     books: Book[],
     progress: ReadingProgress[]
   ) {
+    if (!family) return;
     const memberIds = allMembers.map((m) => m.id);
+
+    // 1. Check localStorage first — synchronous, survives remounts and page refreshes
+    const localCelebrated = getLocalCelebrated(family.id);
+
+    // 2. Also fetch from DB to catch milestones marked on other devices
     const celebratedMap = await fetchCelebratedMilestones(memberIds);
 
     const statsMap: Record<string, ReturnType<typeof computeMemberStats>> = {};
@@ -122,19 +131,30 @@ export default function DashboardPage() {
       statsMap[m.id] = computeMemberStats(m.id, progress, books);
     }
 
-    const pending = computePendingMilestones(allMembers as FamilyMember[], statsMap, celebratedMap);
-    if (pending.length > 0) {
-      // Persist ALL detected milestones immediately so they never reappear on the
-      // next visit, even if the user navigates away before dismissing every modal.
-      await Promise.all(
-        pending.map((p) => markMilestoneCelebrated(p.memberId, p.type, p.value))
-      );
-      setMilestoneQueue(pending);
+    // 3. Compute all milestones that crossed a threshold
+    const allPending = computePendingMilestones(allMembers as FamilyMember[], statsMap, celebratedMap);
+
+    // 4. Filter out anything already recorded in localStorage
+    const pending = allPending.filter(
+      (p) => !localCelebrated.has(milestoneKey(p.memberId, p.type, p.value))
+    );
+
+    if (pending.length === 0) return;
+
+    // 5. Persist ALL to both localStorage and DB immediately, before showing any modal.
+    //    This means even if the user navigates away mid-queue, they won't see them again.
+    for (const p of pending) {
+      markLocalCelebrated(family.id, milestoneKey(p.memberId, p.type, p.value));
     }
+    await Promise.all(
+      pending.map((p) => markMilestoneCelebrated(p.memberId, p.type, p.value))
+    );
+
+    setMilestoneQueue(pending);
   }
 
   function dismissCurrentMilestone() {
-    // Celebration already persisted in checkMilestones — just advance the queue.
+    // Already persisted in checkMilestones — just advance the display queue.
     setMilestoneQueue((q) => q.slice(1));
   }
 
