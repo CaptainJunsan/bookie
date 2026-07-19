@@ -15,6 +15,9 @@ import AdminDashboard from "../pages/AdminDashboard";
 import ClubsPage from "../pages/ClubsPage";
 import ClubDetailPage from "../pages/ClubDetailPage";
 import ClubInvitePage from "../pages/ClubInvitePage";
+import AboutPage from "../pages/AboutPage";
+import PrivacyPage from "../pages/PrivacyPage";
+import TermsPage from "../pages/TermsPage";
 
 async function requireAuth() {
   const { data: { session } } = await supabase.auth.getSession();
@@ -74,6 +77,9 @@ export const router = createBrowserRouter([
       { path: "clubs/invite/:token", Component: ClubInvitePage },
       { path: "clubs/:id", Component: ClubDetailPage, loader: requireAuthWithFamily },
       { path: "admin", Component: AdminDashboard, loader: requireAuthWithFamily },
+      { path: "about", Component: AboutPage },
+      { path: "privacy", Component: PrivacyPage },
+      { path: "terms", Component: TermsPage },
     ],
   },
 ]);
