@@ -5,7 +5,8 @@ import {
   Globe, Lock, Copy, Check, Plus, X, Loader2,
   Trash2, Settings, ChevronDown, Download, Calendar,
   Crown, BookMarked, MapPin, Layers, UserCheck, UserX,
-  BookmarkPlus,
+  BookmarkPlus, MessageSquare, Pin, ShieldOff, AlertTriangle,
+  ChevronRight, Send,
 } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../contexts/AuthContext";
@@ -13,13 +14,14 @@ import BookCover from "../components/BookCover";
 import { fetchBookByIsbn } from "../lib/supabase";
 import type {
   Club, ClubMember, ClubBook, ClubReadingProgress, ClubRole, FamilyMember,
-  ReadingGroup, ClubJoinRequest,
+  ReadingGroup, ClubJoinRequest, ClubTopic, ClubTopicComment,
 } from "../lib/types";
+import { filterProfanity } from "../lib/profanityFilter";
 import { STATUS_LABELS } from "../lib/types";
 import { toast } from "sonner";
 import { cn } from "../app/components/ui/utils";
 
-type Tab = "books" | "groups" | "members" | "progress" | "reports";
+type Tab = "books" | "groups" | "members" | "progress" | "topics" | "reports";
 
 interface MemberReport {
   member_id: string;
@@ -127,6 +129,27 @@ export default function ClubDetailPage() {
   const [joining, setJoining] = useState(false);
   const [myPendingRequest, setMyPendingRequest] = useState<ClubJoinRequest | null>(null);
 
+  // Moderation word list (loaded from DB; falls back to built-in defaults)
+  const [wordList, setWordList] = useState<string[]>([]);
+
+  // Topics
+  const [topics, setTopics] = useState<ClubTopic[]>([]);
+  const [activeTopic, setActiveTopic] = useState<ClubTopic | null>(null);
+  const [topicComments, setTopicComments] = useState<ClubTopicComment[]>([]);
+  const [commentsLoading, setCommentsLoading] = useState(false);
+  const [newComment, setNewComment] = useState("");
+  const [submittingComment, setSubmittingComment] = useState(false);
+  const [showNewTopic, setShowNewTopic] = useState(false);
+  const [newTopicTitle, setNewTopicTitle] = useState("");
+  const [newTopicBody, setNewTopicBody] = useState("");
+  const [newTopicCommentingAllowed, setNewTopicCommentingAllowed] = useState(true);
+  const [savingTopic, setSavingTopic] = useState(false);
+  const [blockedMemberIds, setBlockedMemberIds] = useState<string[]>([]);
+
+  // Settings extras
+  const [editCommenting, setEditCommenting] = useState(false);
+  const [editProfanity, setEditProfanity] = useState(true);
+
   // Reading group membership for the current user's family members
   const [myReadingGroupIds, setMyReadingGroupIds] = useState<string[]>([]);
 
@@ -144,6 +167,13 @@ export default function ClubDetailPage() {
       setEditCity(clubData.city || "");
       setEditSuburb(clubData.suburb || "");
       setEditPublic(clubData.is_public);
+      setEditCommenting(clubData.commenting_enabled ?? false);
+      setEditProfanity(clubData.profanity_filter ?? true);
+
+      // Load enabled profanity words from moderation table
+      const { data: mwords } = await supabase
+        .from("moderation_words").select("word").eq("enabled", true);
+      setWordList((mwords || []).map((r: { word: string }) => r.word));
 
       // Members + profiles
       const { data: cm } = await supabase
@@ -218,6 +248,23 @@ export default function ClubDetailPage() {
         );
       }
 
+      // Topics
+      const { data: topicsData } = await supabase
+        .from("club_topics").select("*").eq("club_id", id)
+        .order("is_pinned", { ascending: false }).order("created_at", { ascending: false });
+      setTopics(topicsData || []);
+
+      // Blocked commenters (owner/admin only)
+      const myEntryForBlocks = rows.find((r) => myMemberIds.includes(r.family_member_id));
+      if (myEntryForBlocks && (myEntryForBlocks.role === "owner" || myEntryForBlocks.role === "admin")) {
+        const { data: blocks } = await supabase.from("club_comment_blocks").select("member_id").eq("club_id", id);
+        setBlockedMemberIds((blocks || []).map((b: { member_id: string }) => b.member_id));
+      } else if (myMemberIds.length) {
+        // Non-owners: check if they themselves are blocked
+        const { data: blocks } = await supabase.from("club_comment_blocks").select("member_id").eq("club_id", id).in("member_id", myMemberIds);
+        setBlockedMemberIds((blocks || []).map((b: { member_id: string }) => b.member_id));
+      }
+
       // Mark notifications seen
       if (myMemberIds.length) {
         await supabase.from("club_notifications").update({ seen: true })
@@ -241,6 +288,101 @@ export default function ClubDetailPage() {
     setMemberReports(mr || []);
     setBookReports(br || []);
     setReportsLoading(false);
+  }
+
+  async function loadTopicComments(topicId: string) {
+    setCommentsLoading(true);
+    const { data } = await supabase
+      .from("club_topic_comments")
+      .select("*, author:family_members(*)")
+      .eq("topic_id", topicId)
+      .order("created_at");
+    setTopicComments((data || []) as ClubTopicComment[]);
+    setCommentsLoading(false);
+  }
+
+  async function handleOpenTopic(topic: ClubTopic) {
+    setActiveTopic(topic);
+    await loadTopicComments(topic.id);
+  }
+
+  async function handleCreateTopic(e: React.FormEvent) {
+    e.preventDefault();
+    if (!club || !member || !newTopicTitle.trim()) return;
+    setSavingTopic(true);
+    try {
+      const { data: topic, error } = await supabase
+        .from("club_topics")
+        .insert({
+          club_id: club.id,
+          created_by: member.id,
+          title: newTopicTitle.trim(),
+          body: newTopicBody.trim() || null,
+          commenting_allowed: newTopicCommentingAllowed,
+          profanity_filter: club.profanity_filter,
+        })
+        .select().single();
+      if (error) throw error;
+      setTopics((prev) => [topic, ...prev]);
+      setShowNewTopic(false);
+      setNewTopicTitle("");
+      setNewTopicBody("");
+      setNewTopicCommentingAllowed(true);
+      toast.success("Topic posted!");
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Failed to post topic");
+    } finally {
+      setSavingTopic(false);
+    }
+  }
+
+  async function handleSubmitComment() {
+    if (!activeTopic || !member || !newComment.trim()) return;
+    setSubmittingComment(true);
+    const body = activeTopic.profanity_filter ? filterProfanity(newComment.trim(), wordList) : newComment.trim();
+    const { data: comment, error } = await supabase
+      .from("club_topic_comments")
+      .insert({ topic_id: activeTopic.id, author_id: member.id, body })
+      .select("*, author:family_members(*)").single();
+    if (error) { toast.error("Failed to post comment"); setSubmittingComment(false); return; }
+    setTopicComments((prev) => [...prev, comment as ClubTopicComment]);
+    setNewComment("");
+    setSubmittingComment(false);
+  }
+
+  async function handleDeleteComment(commentId: string) {
+    const { error } = await supabase.from("club_topic_comments").update({ is_deleted: true }).eq("id", commentId);
+    if (error) { toast.error("Failed to delete comment"); return; }
+    setTopicComments((prev) => prev.map((c) => c.id === commentId ? { ...c, is_deleted: true } : c));
+  }
+
+  async function handleBlockCommenter(memberId: string) {
+    if (!club) return;
+    await supabase.from("club_comment_blocks").upsert({ club_id: club.id, member_id: memberId });
+    setBlockedMemberIds((prev) => [...prev, memberId]);
+    toast.success("Member blocked from commenting");
+  }
+
+  async function handleUnblockCommenter(memberId: string) {
+    if (!club) return;
+    await supabase.from("club_comment_blocks").delete().eq("club_id", club.id).eq("member_id", memberId);
+    setBlockedMemberIds((prev) => prev.filter((id) => id !== memberId));
+    toast.success("Member unblocked");
+  }
+
+  async function handleDeleteTopic(topicId: string) {
+    const { error } = await supabase.from("club_topics").delete().eq("id", topicId);
+    if (error) { toast.error("Failed to delete topic"); return; }
+    setTopics((prev) => prev.filter((t) => t.id !== topicId));
+    if (activeTopic?.id === topicId) setActiveTopic(null);
+    toast.success("Topic deleted");
+  }
+
+  async function handlePinTopic(topic: ClubTopic) {
+    const { error } = await supabase.from("club_topics").update({ is_pinned: !topic.is_pinned }).eq("id", topic.id);
+    if (error) { toast.error("Failed to update topic"); return; }
+    setTopics((prev) => prev.map((t) => t.id === topic.id ? { ...t, is_pinned: !topic.is_pinned } : t));
+    if (activeTopic?.id === topic.id) setActiveTopic((t) => t ? { ...t, is_pinned: !t.is_pinned } : t);
   }
 
   async function handleCopyInvite() {
@@ -514,9 +656,10 @@ export default function ClubDetailPage() {
     const { error } = await supabase.from("clubs").update({
       name: editName.trim(), description: editDesc.trim() || null,
       is_public: editPublic, city: editCity.trim(), suburb: editSuburb.trim() || null,
+      commenting_enabled: editCommenting, profanity_filter: editProfanity,
     }).eq("id", club.id);
     if (error) { toast.error("Failed to save"); setSavingSettings(false); return; }
-    setClub((c) => c ? { ...c, name: editName, description: editDesc || null, is_public: editPublic, city: editCity, suburb: editSuburb || null } : c);
+    setClub((c) => c ? { ...c, name: editName, description: editDesc || null, is_public: editPublic, city: editCity, suburb: editSuburb || null, commenting_enabled: editCommenting, profanity_filter: editProfanity } : c);
     setShowSettings(false);
     setSavingSettings(false);
     toast.success("Club settings saved");
@@ -572,12 +715,15 @@ export default function ClubDetailPage() {
     ? books
     : books.filter((b) => b.reading_group_id === null || myReadingGroupIds.includes(b.reading_group_id));
 
+  const isOwner = myRole === "owner";
+
   const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
     { id: "books", label: "Books", icon: <BookOpen size={12} /> },
     { id: "groups", label: "Groups", icon: <Layers size={12} /> },
     { id: "members", label: "Members", icon: <Users size={12} /> },
     { id: "progress", label: "Progress", icon: <BarChart2 size={12} /> },
-    { id: "reports", label: "Reports", icon: <FileText size={12} /> },
+    { id: "topics", label: "Topics", icon: <MessageSquare size={12} /> },
+    ...(isOwner ? [{ id: "reports" as Tab, label: "Reports", icon: <FileText size={12} /> }] : []),
   ];
 
   if (loading) {
@@ -889,12 +1035,22 @@ export default function ClubDetailPage() {
         {/* ── Tab: Progress ── */}
         {activeTab === "progress" && (
           <div>
+            {/* Privacy: non-owners in age-locked clubs only see their own progress */}
+            {!isOwnerOrAdmin && readingGroups.length > 0 && (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted rounded-xl px-3 py-2 mb-4">
+                <Lock size={12} className="shrink-0" />
+                For privacy, you can only see your own reading progress in this club.
+              </div>
+            )}
             {books.length === 0 ? (
               <div className="text-center py-12"><span className="text-4xl block mb-3">📊</span><p className="font-semibold">No books to track yet</p></div>
             ) : (
               <div className="space-y-4">
-                {books.map((book) => {
+                {visibleBooks.map((book) => {
                   const bookProgress = progress.filter((p) => p.club_book_id === book.id);
+                  const visibleMembers = isOwnerOrAdmin || readingGroups.length === 0
+                    ? clubMembers
+                    : clubMembers.filter((cm) => myMemberIds.includes(cm.family_member_id));
                   const finishedCount = bookProgress.filter((p) => p.status === "finished").length;
                   return (
                     <div key={book.id} className="bg-card border border-border rounded-2xl p-4">
@@ -908,19 +1064,21 @@ export default function ClubDetailPage() {
                             )}
                           </div>
                           {book.author && <p className="text-xs text-muted-foreground">{book.author}</p>}
-                          <div className="mt-1.5">
-                            <div className="flex items-center justify-between text-xs text-muted-foreground mb-0.5">
-                              <span>{finishedCount}/{clubMembers.length} finished</span>
-                              <span>{clubMembers.length ? Math.round((finishedCount / clubMembers.length) * 100) : 0}%</span>
+                          {(isOwnerOrAdmin || readingGroups.length === 0) && (
+                            <div className="mt-1.5">
+                              <div className="flex items-center justify-between text-xs text-muted-foreground mb-0.5">
+                                <span>{finishedCount}/{clubMembers.length} finished</span>
+                                <span>{clubMembers.length ? Math.round((finishedCount / clubMembers.length) * 100) : 0}%</span>
+                              </div>
+                              <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                                <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${clubMembers.length ? (finishedCount / clubMembers.length) * 100 : 0}%` }} />
+                              </div>
                             </div>
-                            <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-                              <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${clubMembers.length ? (finishedCount / clubMembers.length) * 100 : 0}%` }} />
-                            </div>
-                          </div>
+                          )}
                         </div>
                       </div>
                       <div className="space-y-1.5">
-                        {clubMembers.map((cm) => {
+                        {visibleMembers.map((cm) => {
                           const { nickname, avatar } = resolveProfile(cm);
                           const prg = bookProgress.find((p) => p.member_id === cm.family_member_id);
                           const pct = book.page_count && prg?.current_page ? Math.min(100, Math.round((prg.current_page / book.page_count) * 100)) : 0;
@@ -942,6 +1100,191 @@ export default function ClubDetailPage() {
                 })}
               </div>
             )}
+          </div>
+        )}
+
+        {/* ── Tab: Topics ── */}
+        {activeTab === "topics" && !activeTopic && (
+          <div>
+            {isOwnerOrAdmin && (
+              <button onClick={() => setShowNewTopic(true)}
+                className="w-full flex items-center gap-2 px-4 py-3 mb-4 border-2 border-dashed border-border rounded-2xl text-sm font-semibold text-muted-foreground hover:border-primary hover:text-primary transition-colors">
+                <Plus size={16} />New Topic
+              </button>
+            )}
+            {!club?.commenting_enabled && !isOwnerOrAdmin && (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted rounded-xl px-3 py-2 mb-4">
+                <MessageSquare size={12} className="shrink-0" />
+                Commenting is disabled for this club. Owner messages will appear here.
+              </div>
+            )}
+            {topics.length === 0 ? (
+              <div className="text-center py-12">
+                <span className="text-4xl block mb-3">💬</span>
+                <p className="font-semibold text-foreground">No topics yet</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  {isOwnerOrAdmin ? "Post the first topic to start a discussion." : "The owner hasn't posted any topics yet."}
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {topics.map((topic) => {
+                  const isOwnerPost = topic.created_by === club?.created_by;
+                  return (
+                    <button key={topic.id} onClick={() => handleOpenTopic(topic)}
+                      className={cn("w-full text-left p-4 rounded-2xl border transition-all hover:bg-muted/50",
+                        isOwnerPost ? "bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800" : "bg-card border-border")}>
+                      <div className="flex items-start gap-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap mb-0.5">
+                            {topic.is_pinned && <Pin size={11} className="text-primary shrink-0" />}
+                            {isOwnerPost && <span className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-400 shrink-0"><Crown size={8} className="inline mr-0.5 -mt-0.5" />Owner</span>}
+                            <p className="font-semibold text-sm line-clamp-1">{topic.title}</p>
+                          </div>
+                          {topic.body && <p className="text-xs text-muted-foreground line-clamp-2">{topic.body}</p>}
+                          <p className="text-[10px] text-muted-foreground mt-1.5">{new Date(topic.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</p>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          {!topic.commenting_allowed && <MessageSquare size={12} className="text-muted-foreground opacity-40" />}
+                          <ChevronRight size={16} className="text-muted-foreground" />
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Topic Detail (inline) ── */}
+        {activeTab === "topics" && activeTopic && (
+          <div>
+            {/* Back */}
+            <button onClick={() => { setActiveTopic(null); setTopicComments([]); setNewComment(""); }}
+              className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors mb-4">
+              <ArrowLeft size={16} />All Topics
+            </button>
+
+            {/* Topic post */}
+            {(() => {
+              const isOwnerPost = activeTopic.created_by === club?.created_by;
+              return (
+                <div className={cn("rounded-2xl border p-4 mb-4", isOwnerPost ? "bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800" : "bg-card border-border")}>
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {activeTopic.is_pinned && <Pin size={12} className="text-primary" />}
+                      {isOwnerPost && <span className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-400"><Crown size={8} className="inline mr-0.5 -mt-0.5" />Owner</span>}
+                      <h3 className="font-bold text-base">{activeTopic.title}</h3>
+                    </div>
+                    {isOwnerOrAdmin && (
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button onClick={() => handlePinTopic(activeTopic)} title={activeTopic.is_pinned ? "Unpin" : "Pin"}
+                          className="p-1.5 text-muted-foreground hover:text-primary rounded-lg transition-colors">
+                          <Pin size={14} />
+                        </button>
+                        <button onClick={() => handleDeleteTopic(activeTopic.id)}
+                          className="p-1.5 text-muted-foreground hover:text-red-500 rounded-lg transition-colors">
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                  {activeTopic.body && <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap">{activeTopic.body}</p>}
+                  <p className="text-[10px] text-muted-foreground mt-2">{new Date(activeTopic.created_at).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}</p>
+                </div>
+              );
+            })()}
+
+            {/* Comments */}
+            <div className="mb-3">
+              <h4 className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-3">Discussion</h4>
+              {commentsLoading ? (
+                <div className="flex justify-center py-6"><Loader2 size={20} className="text-primary animate-spin" /></div>
+              ) : topicComments.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-6">No comments yet. Be the first to reply!</p>
+              ) : (
+                <div className="space-y-2">
+                  {topicComments.map((comment) => {
+                    if (comment.is_deleted) {
+                      return (
+                        <div key={comment.id} className="px-3 py-2 rounded-xl bg-muted">
+                          <p className="text-xs text-muted-foreground italic">[comment removed]</p>
+                        </div>
+                      );
+                    }
+                    const authorIsOwner = comment.author_id === club?.created_by;
+                    const authorMember = comment.author as FamilyMember | undefined;
+                    const isMyComment = allMembers.some((m) => m.id === comment.author_id);
+                    return (
+                      <div key={comment.id} className={cn("rounded-xl border p-3", authorIsOwner ? "bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800" : "bg-card border-border")}>
+                        <div className="flex items-start gap-2">
+                          <span className="text-base shrink-0">{authorMember?.avatar_emoji || "👤"}</span>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap mb-0.5">
+                              <span className="text-xs font-semibold">{authorMember?.nickname || "Member"}</span>
+                              {authorIsOwner && <span className="text-[9px] font-bold uppercase tracking-wide px-1 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400"><Crown size={8} className="inline mr-0.5 -mt-0.5" />Owner</span>}
+                              <span className="text-[10px] text-muted-foreground">{new Date(comment.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
+                            </div>
+                            <p className="text-sm text-foreground leading-relaxed">{comment.body}</p>
+                          </div>
+                          {isOwnerOrAdmin && !isMyComment && (
+                            <div className="flex items-center gap-0.5 shrink-0">
+                              <button onClick={() => handleDeleteComment(comment.id)} title="Remove comment"
+                                className="p-1 text-muted-foreground hover:text-red-500 rounded transition-colors">
+                                <Trash2 size={12} />
+                              </button>
+                              {!blockedMemberIds.includes(comment.author_id) ? (
+                                <button onClick={() => handleBlockCommenter(comment.author_id)} title="Block from commenting"
+                                  className="p-1 text-muted-foreground hover:text-red-500 rounded transition-colors">
+                                  <ShieldOff size={12} />
+                                </button>
+                              ) : (
+                                <button onClick={() => handleUnblockCommenter(comment.author_id)} title="Unblock"
+                                  className="p-1 text-muted-foreground hover:text-green-600 rounded transition-colors">
+                                  <UserCheck size={12} />
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Comment input */}
+            {(() => {
+              const amIBlocked = allMembers.some((m) => blockedMemberIds.includes(m.id));
+              const canComment = amIMember && activeTopic.commenting_allowed && (club?.commenting_enabled || isOwnerOrAdmin) && !amIBlocked;
+              if (!canComment) {
+                return (
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted rounded-xl px-3 py-2">
+                    {amIBlocked ? <><ShieldOff size={12} className="shrink-0" />You have been blocked from commenting in this club.</> :
+                     !activeTopic.commenting_allowed ? <><MessageSquare size={12} className="shrink-0" />Comments are disabled for this topic.</> :
+                     <><MessageSquare size={12} className="shrink-0" />Commenting is disabled for this club.</>}
+                  </div>
+                );
+              }
+              return (
+                <div className="flex gap-2 mt-2">
+                  <input
+                    type="text"
+                    value={newComment}
+                    onChange={(e) => setNewComment(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && newComment.trim()) { e.preventDefault(); handleSubmitComment(); } }}
+                    placeholder="Write a comment…"
+                    className="flex-1 px-4 py-2.5 rounded-xl bg-background border border-border text-sm outline-none focus:ring-2 focus:ring-ring"
+                  />
+                  <button onClick={handleSubmitComment} disabled={submittingComment || !newComment.trim()}
+                    className="px-3 py-2.5 rounded-xl bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-60 transition-opacity">
+                    {submittingComment ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                  </button>
+                </div>
+              );
+            })()}
           </div>
         )}
 
@@ -1012,6 +1355,50 @@ export default function ClubDetailPage() {
           </div>
         )}
       </div>
+
+      {/* ── New Topic Sheet ── */}
+      {showNewTopic && (
+        <div className="fixed inset-0 z-50 flex items-end lg:items-center justify-center">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowNewTopic(false)} />
+          <div className="relative w-full max-w-md bg-card rounded-t-3xl lg:rounded-2xl border border-border shadow-2xl p-6 z-10">
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="font-display text-xl font-bold">New Topic</h2>
+              <button onClick={() => setShowNewTopic(false)} className="text-muted-foreground hover:text-foreground"><X size={20} /></button>
+            </div>
+            <form onSubmit={handleCreateTopic} className="space-y-4">
+              <div>
+                <label className="block text-sm font-semibold mb-1.5">Title <span className="text-red-500">*</span></label>
+                <input type="text" required value={newTopicTitle} onChange={(e) => setNewTopicTitle(e.target.value)}
+                  placeholder="e.g. What did you think of Chapter 3?"
+                  maxLength={120}
+                  className="w-full px-4 py-2.5 rounded-xl bg-background border border-border text-sm outline-none focus:ring-2 focus:ring-ring" />
+              </div>
+              <div>
+                <label className="block text-sm font-semibold mb-1.5">Message <span className="text-muted-foreground font-normal">(optional)</span></label>
+                <textarea value={newTopicBody} onChange={(e) => setNewTopicBody(e.target.value)}
+                  placeholder="Share your thoughts, a quote, a question…" rows={3} maxLength={1000}
+                  className="w-full px-4 py-2.5 rounded-xl bg-background border border-border text-sm outline-none focus:ring-2 focus:ring-ring resize-none" />
+              </div>
+              {/* Per-topic commenting toggle */}
+              <div className="flex items-center gap-3 p-3 bg-muted rounded-xl">
+                <div className="flex-1">
+                  <p className="text-sm font-semibold">Allow comments</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Members can reply to this topic.</p>
+                </div>
+                <button type="button" onClick={() => setNewTopicCommentingAllowed(!newTopicCommentingAllowed)}
+                  className={`relative w-12 h-6 rounded-full transition-colors flex-shrink-0 ${newTopicCommentingAllowed ? "bg-primary" : "bg-border"}`}>
+                  <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${newTopicCommentingAllowed ? "translate-x-6" : ""}`} />
+                </button>
+              </div>
+              <button type="submit" disabled={savingTopic || !newTopicTitle.trim()}
+                className="w-full py-3 rounded-xl bg-primary text-primary-foreground font-bold text-sm hover:opacity-90 disabled:opacity-60 flex items-center justify-center gap-2">
+                {savingTopic ? <Loader2 size={16} className="animate-spin" /> : <MessageSquare size={16} />}
+                Post Topic
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* ── Add Book Sheet ── */}
       {showAddBook && (
@@ -1249,6 +1636,40 @@ export default function ClubDetailPage() {
                   <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${editPublic ? "translate-x-6" : ""}`} />
                 </button>
               </div>
+              {/* Commenting toggle */}
+              <div className="flex items-center gap-3 p-3 bg-muted rounded-xl">
+                <div className="flex-1">
+                  <p className="text-sm font-semibold">Member commenting</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Allow members to comment on Topics. Off by default for educational clubs.</p>
+                </div>
+                <button type="button" onClick={() => setEditCommenting(!editCommenting)}
+                  className={`relative w-12 h-6 rounded-full transition-colors flex-shrink-0 ${editCommenting ? "bg-primary" : "bg-border"}`}>
+                  <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${editCommenting ? "translate-x-6" : ""}`} />
+                </button>
+              </div>
+
+              {/* Profanity filter toggle (only shown when commenting on) */}
+              {editCommenting && (
+                <div>
+                  <div className="flex items-center gap-3 p-3 bg-muted rounded-xl">
+                    <div className="flex-1">
+                      <p className="text-sm font-semibold">Profanity filter</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">Automatically asterisk-out offensive words in comments. Recommended on.</p>
+                    </div>
+                    <button type="button" onClick={() => setEditProfanity(!editProfanity)}
+                      className={`relative w-12 h-6 rounded-full transition-colors flex-shrink-0 ${editProfanity ? "bg-primary" : "bg-border"}`}>
+                      <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${editProfanity ? "translate-x-6" : ""}`} />
+                    </button>
+                  </div>
+                  {!editProfanity && (
+                    <div className="flex items-start gap-2 mt-2 px-3 py-2 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-xl">
+                      <AlertTriangle size={13} className="text-amber-600 shrink-0 mt-0.5" />
+                      <p className="text-xs text-amber-700 dark:text-amber-400">With the filter off, explicit language may appear in comments. Only disable this for appropriate adult groups.</p>
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div className="bg-background border border-border rounded-xl p-3">
                 <p className="text-xs font-semibold text-muted-foreground mb-1.5">Invite link (bypasses approval)</p>
                 <div className="flex items-center gap-2">

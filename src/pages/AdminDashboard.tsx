@@ -4,7 +4,9 @@ import BookCover from "../components/BookCover";
 import {
   ArrowLeft, ArrowRight, RefreshCw, Search, ChevronDown,
   Printer, Star, Users, BookOpen, FileText, TrendingUp, Home,
+  ShieldCheck, Plus, Trash2, X, Loader2, ToggleLeft, ToggleRight,
 } from "lucide-react";
+import { supabase } from "../lib/supabase";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
   PieChart, Pie, Legend,
@@ -18,7 +20,7 @@ import {
 } from "../lib/admin";
 import { AGE_GROUP_COLORS, AGE_GROUP_LABELS } from "../lib/types";
 
-type Tab = "overview" | "library" | "insights";
+type Tab = "overview" | "library" | "insights" | "moderation";
 type DetailMetric =
   | "families" | "readers" | "books" | "pages" | "activity" | "age_groups" | "authors" | null;
 
@@ -208,13 +210,13 @@ export default function AdminDashboard() {
       {!detailMetric && (
         <div className="sticky top-14 z-30 bg-card border-b border-border print:hidden">
           <div className="max-w-3xl mx-auto px-4 flex">
-            {(["overview", "library", "insights"] as Tab[]).map((t) => (
+            {(["overview", "library", "insights", "moderation"] as Tab[]).map((t) => (
               <button
                 key={t}
                 onClick={() => setTab(t)}
                 className={`px-4 py-3 text-sm font-semibold capitalize border-b-2 transition-colors ${tab === t ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"}`}
               >
-                {t === "overview" ? "Overview" : t === "library" ? "Library" : "Insights"}
+                {t === "overview" ? "Overview" : t === "library" ? "Library" : t === "insights" ? "Insights" : "Moderation"}
               </button>
             ))}
           </div>
@@ -222,7 +224,7 @@ export default function AdminDashboard() {
       )}
 
       {/* Filter bar — Library & Insights only */}
-      {!detailMetric && tab !== "overview" && (
+      {!detailMetric && tab !== "overview" && tab !== "moderation" && (
         <div className="bg-muted/50 border-b border-border print:hidden">
           <div className="max-w-3xl mx-auto px-4 py-2.5 flex flex-wrap items-center gap-2">
             <div className="relative">
@@ -504,6 +506,9 @@ export default function AdminDashboard() {
             <InsightsContent chartData={chartData} ageBreakdown={ageBreakdown} filteredAuthors={filteredAuthors} books={books} ageGroupFilter={ageGroupFilter} />
           </>
         )}
+
+        {/* ══ MODERATION TAB ══ */}
+        {tab === "moderation" && <ModerationTab />}
       </main>
     </div>
   );
@@ -985,6 +990,260 @@ function PrintHeader({ title }: { title: string }) {
         <h1 className="font-display font-bold text-xl">{title}</h1>
       </div>
       <p className="text-xs text-muted-foreground">{new Date().toLocaleDateString()}</p>
+    </div>
+  );
+}
+
+// ── Moderation tab ────────────────────────────────────────────
+
+interface ModerationWord {
+  id: string;
+  word: string;
+  enabled: boolean;
+  added_at: string;
+  added_by: string | null;
+}
+
+function ModerationTab() {
+  const [words, setWords] = useState<ModerationWord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [filterEnabled, setFilterEnabled] = useState<"all" | "enabled" | "disabled">("all");
+  const [newWord, setNewWord] = useState("");
+  const [adding, setAdding] = useState(false);
+  const [showAddInput, setShowAddInput] = useState(false);
+  const [savingId, setSavingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  useEffect(() => { load(); }, []);
+
+  async function load() {
+    setLoading(true);
+    const { data } = await supabase
+      .from("moderation_words")
+      .select("*")
+      .order("word");
+    setWords((data as ModerationWord[]) || []);
+    setLoading(false);
+  }
+
+  async function handleAdd(e: React.FormEvent) {
+    e.preventDefault();
+    const w = newWord.trim().toLowerCase();
+    if (!w) return;
+    setAdding(true);
+    const { data, error } = await supabase
+      .from("moderation_words")
+      .insert({ word: w })
+      .select().single();
+    setAdding(false);
+    if (error) {
+      if (error.code === "23505") {
+        // unique violation — word already exists
+        const existing = words.find((x) => x.word === w);
+        if (existing && !existing.enabled) {
+          // re-enable it instead
+          await handleToggle(existing);
+        }
+      }
+      setNewWord("");
+      setShowAddInput(false);
+      return;
+    }
+    setWords((prev) => [...prev, data as ModerationWord].sort((a, b) => a.word.localeCompare(b.word)));
+    setNewWord("");
+    setShowAddInput(false);
+  }
+
+  async function handleToggle(word: ModerationWord) {
+    setSavingId(word.id);
+    const { error } = await supabase
+      .from("moderation_words")
+      .update({ enabled: !word.enabled })
+      .eq("id", word.id);
+    setSavingId(null);
+    if (!error) setWords((prev) => prev.map((w) => w.id === word.id ? { ...w, enabled: !w.enabled } : w));
+  }
+
+  async function handleDelete(word: ModerationWord) {
+    setDeletingId(word.id);
+    await supabase.from("moderation_words").delete().eq("id", word.id);
+    setWords((prev) => prev.filter((w) => w.id !== word.id));
+    setDeletingId(null);
+  }
+
+  const filtered = words.filter((w) => {
+    if (filterEnabled === "enabled" && !w.enabled) return false;
+    if (filterEnabled === "disabled" && w.enabled) return false;
+    if (search.trim() && !w.word.includes(search.trim().toLowerCase())) return false;
+    return true;
+  });
+
+  const enabledCount = words.filter((w) => w.enabled).length;
+  const disabledCount = words.filter((w) => !w.enabled).length;
+
+  return (
+    <div className="max-w-3xl mx-auto px-4 py-8 pb-20">
+      {/* Header */}
+      <div className="flex items-start justify-between mb-6">
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <ShieldCheck size={20} className="text-primary" />
+            <h2 className="font-display font-bold text-xl">Profanity Word List</h2>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Words in this list are automatically asterisk-filtered in club comments. Enabled words are active; disabled words are excluded from filtering.
+          </p>
+        </div>
+        <button
+          onClick={() => setShowAddInput(!showAddInput)}
+          className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 transition-opacity shadow-sm shrink-0 ml-4"
+        >
+          {showAddInput ? <X size={14} /> : <Plus size={14} />}
+          {showAddInput ? "Cancel" : "Add Word"}
+        </button>
+      </div>
+
+      {/* Stats strip */}
+      <div className="grid grid-cols-3 gap-3 mb-6">
+        {[
+          { label: "Total words", value: words.length, color: "text-foreground" },
+          { label: "Filtering active", value: enabledCount, color: "text-primary" },
+          { label: "Disabled", value: disabledCount, color: "text-muted-foreground" },
+        ].map(({ label, value, color }) => (
+          <div key={label} className="bg-card border border-border rounded-2xl px-4 py-3 text-center">
+            <p className={`text-2xl font-bold ${color}`}>{value}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">{label}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Add word form */}
+      {showAddInput && (
+        <form onSubmit={handleAdd} className="flex gap-2 mb-5">
+          <input
+            type="text"
+            value={newWord}
+            onChange={(e) => setNewWord(e.target.value.toLowerCase())}
+            placeholder="Type a word to add…"
+            autoFocus
+            className="flex-1 px-4 py-2.5 rounded-xl bg-background border border-border text-sm outline-none focus:ring-2 focus:ring-ring font-mono"
+          />
+          <button
+            type="submit"
+            disabled={adding || !newWord.trim()}
+            className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 disabled:opacity-60 transition-opacity"
+          >
+            {adding ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+            Add
+          </button>
+        </form>
+      )}
+
+      {/* Search + filter */}
+      <div className="flex gap-2 mb-4">
+        <div className="relative flex-1">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+          <input
+            type="text"
+            placeholder="Search words…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full pl-8 pr-4 py-2 rounded-xl bg-card border border-border text-sm outline-none focus:ring-2 focus:ring-ring"
+          />
+          {search && (
+            <button onClick={() => setSearch("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+              <X size={13} />
+            </button>
+          )}
+        </div>
+        <div className="flex bg-muted rounded-xl p-1 gap-1 shrink-0">
+          {(["all", "enabled", "disabled"] as const).map((f) => (
+            <button
+              key={f}
+              onClick={() => setFilterEnabled(f)}
+              className={`px-3 py-1 text-xs font-semibold rounded-lg transition-all capitalize ${filterEnabled === f ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+            >
+              {f}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Word list */}
+      {loading ? (
+        <div className="flex items-center justify-center py-20">
+          <Loader2 size={24} className="text-primary animate-spin" />
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="text-center py-16">
+          <ShieldCheck size={36} className="mx-auto text-muted-foreground mb-3 opacity-40" />
+          <p className="font-semibold text-foreground">
+            {search ? "No words match your search" : words.length === 0 ? "No words in the list yet" : "No words to show"}
+          </p>
+          <p className="text-sm text-muted-foreground mt-1">
+            {!search && words.length === 0 && "Add words above to begin filtering profanity."}
+          </p>
+        </div>
+      ) : (
+        <div className="bg-card border border-border rounded-2xl overflow-hidden">
+          {/* Column headers */}
+          <div className="grid grid-cols-[1fr_auto_auto] gap-4 px-4 py-2 border-b border-border bg-muted/50">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Word</p>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground text-center w-20">Filtering</p>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground w-8" />
+          </div>
+          <div className="divide-y divide-border">
+            {filtered.map((word) => (
+              <div key={word.id} className="grid grid-cols-[1fr_auto_auto] gap-4 items-center px-4 py-2.5">
+                <div className="flex items-center gap-2 min-w-0">
+                  <code className={`text-sm font-mono font-semibold truncate ${word.enabled ? "text-foreground" : "text-muted-foreground line-through"}`}>
+                    {word.word}
+                  </code>
+                </div>
+                {/* Toggle */}
+                <div className="flex items-center justify-center w-20">
+                  <button
+                    onClick={() => handleToggle(word)}
+                    disabled={savingId === word.id}
+                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition-all border ${
+                      word.enabled
+                        ? "bg-primary/10 text-primary border-primary/20 hover:bg-primary/20"
+                        : "bg-muted text-muted-foreground border-border hover:border-primary/30"
+                    }`}
+                  >
+                    {savingId === word.id ? (
+                      <Loader2 size={11} className="animate-spin" />
+                    ) : word.enabled ? (
+                      <><ToggleRight size={13} />On</>
+                    ) : (
+                      <><ToggleLeft size={13} />Off</>
+                    )}
+                  </button>
+                </div>
+                {/* Delete */}
+                <div className="flex justify-end w-8">
+                  <button
+                    onClick={() => handleDelete(word)}
+                    disabled={deletingId === word.id}
+                    title="Remove word"
+                    className="p-1.5 text-muted-foreground hover:text-red-500 rounded-lg transition-colors disabled:opacity-40"
+                  >
+                    {deletingId === word.id ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Footer note */}
+      {!loading && words.length > 0 && (
+        <p className="text-xs text-muted-foreground text-center mt-4">
+          Changes take effect immediately for all new comments across all clubs. Existing comments are not retroactively filtered.
+        </p>
+      )}
     </div>
   );
 }

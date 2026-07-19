@@ -47,6 +47,7 @@ export default function ClubsPage() {
   const [createSuburb, setCreateSuburb] = useState("");
   const [createEmoji, setCreateEmoji] = useState("📖");
   const [createPublic, setCreatePublic] = useState(true);
+  const [createClubType, setCreateClubType] = useState<"social" | "educational">("educational");
   const [draftGroups, setDraftGroups] = useState<DraftGroup[]>([blankGroup()]);
   const [creating, setCreating] = useState(false);
 
@@ -124,7 +125,7 @@ export default function ClubsPage() {
 
   function resetForm() {
     setCreateName(""); setCreateDesc(""); setCreateCity(""); setCreateSuburb("");
-    setCreateEmoji("📖"); setCreatePublic(true); setDraftGroups([blankGroup()]);
+    setCreateEmoji("📖"); setCreatePublic(true); setCreateClubType("educational"); setDraftGroups([blankGroup()]);
   }
 
   async function handleCreate(e: React.FormEvent) {
@@ -132,7 +133,7 @@ export default function ClubsPage() {
     if (!member || !createName.trim() || !createCity.trim()) return;
 
     const validGroups = draftGroups.filter((g) => g.name.trim());
-    if (validGroups.length === 0) {
+    if (createClubType === "educational" && validGroups.length === 0) {
       toast.error("Add at least one reading group (e.g. \"Little Readers 0–3\")");
       return;
     }
@@ -149,6 +150,9 @@ export default function ClubsPage() {
           city: createCity.trim(),
           suburb: createSuburb.trim() || null,
           created_by: member.id,
+          club_type: createClubType,
+          commenting_enabled: createClubType === "social",
+          profanity_filter: true,
         })
         .select().single();
       if (error) throw error;
@@ -156,7 +160,7 @@ export default function ClubsPage() {
       // Creator as owner
       await supabase.from("club_members").insert({ club_id: club.id, family_member_id: member.id, role: "owner" });
 
-      // Create reading groups
+      // Create reading groups (required for educational, optional for social)
       if (validGroups.length) {
         await supabase.from("reading_groups").insert(
           validGroups.map((g) => ({
@@ -273,6 +277,22 @@ export default function ClubsPage() {
             <div className="overflow-y-auto flex-1 px-6 py-5">
               <form id="create-club-form" onSubmit={handleCreate} className="space-y-5">
 
+                {/* Club type */}
+                <div>
+                  <label className="block text-sm font-semibold mb-2">Club type</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {(["educational", "social"] as const).map((type) => (
+                      <button key={type} type="button" onClick={() => setCreateClubType(type)}
+                        className={cn("p-3 rounded-xl border-2 text-left transition-all", createClubType === type ? "border-primary bg-primary/5" : "border-border bg-background hover:border-primary/30")}>
+                        <p className="font-bold text-sm">{type === "educational" ? "📚 Educational" : "💬 Social"}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5 leading-snug">
+                          {type === "educational" ? "Age-based reading groups, no comments by default" : "Book club with discussions and topic threads"}
+                        </p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
                 {/* Emoji */}
                 <div>
                   <label className="block text-sm font-semibold mb-2">Club emoji</label>
@@ -322,7 +342,7 @@ export default function ClubsPage() {
                 <div>
                   <div className="flex items-center justify-between mb-2">
                     <label className="block text-sm font-semibold">
-                      Reading groups <span className="text-red-500">*</span>
+                      Reading groups {createClubType === "educational" ? <span className="text-red-500">*</span> : <span className="text-muted-foreground font-normal">(optional)</span>}
                     </label>
                     <button type="button" onClick={addGroup}
                       className="flex items-center gap-1 text-xs text-primary font-semibold hover:opacity-75 transition-opacity">
@@ -331,7 +351,9 @@ export default function ClubsPage() {
                     </button>
                   </div>
                   <p className="text-xs text-muted-foreground mb-3">
-                    Define age-based groups (e.g. "Little Readers 0–3", "Junior 6–9", "Adult Fiction").
+                    {createClubType === "educational"
+                      ? "Define age-based groups (e.g. \"Little Readers 0–3\", \"Junior 6–9\", \"Adult Fiction\")."
+                      : "Optionally organise members by age group. Leave empty for a general social book club."}
                   </p>
                   <div className="space-y-3">
                     {draftGroups.map((g, i) => (

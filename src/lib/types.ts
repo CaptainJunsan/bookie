@@ -143,6 +143,8 @@ export const STATUS_LABELS: Record<ReadingStatus, string> = {
 export type ClubRole = "owner" | "admin" | "member";
 export type JoinRequestStatus = "pending" | "approved" | "rejected";
 
+export type ClubType = "social" | "educational";
+
 export interface Club {
   id: string;
   name: string;
@@ -154,6 +156,9 @@ export interface Club {
   created_at: string;
   city: string | null;
   suburb: string | null;
+  club_type: ClubType;
+  commenting_enabled: boolean;
+  profanity_filter: boolean;
   // joined via query
   member_count?: number;
   my_role?: ClubRole;
@@ -224,4 +229,36 @@ export interface ClubNotification {
   title: string;
   seen: boolean;
   created_at: string;
+}
+
+export interface ClubTopic {
+  id: string;
+  club_id: string;
+  club_book_id: string | null;
+  created_by: string;
+  title: string;
+  body: string | null;
+  commenting_allowed: boolean;
+  profanity_filter: boolean;
+  is_pinned: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ClubTopicComment {
+  id: string;
+  topic_id: string;
+  author_id: string;
+  body: string;
+  is_deleted: boolean;
+  created_at: string;
+  // joined via query
+  author?: FamilyMember;
+}
+
+export interface ClubCommentBlock {
+  id: string;
+  club_id: string;
+  member_id: string;
+  blocked_at: string;
 }

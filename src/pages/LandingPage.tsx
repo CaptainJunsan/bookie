@@ -181,7 +181,6 @@ export default function LandingPage() {
                 {[
                   { emoji: "🏘️", text: "Find clubs near you by city or suburb" },
                   { emoji: "🔖", text: "Age-based reading groups — little ones see little readers' books" },
-                  { emoji: "📊", text: "Track who's read what across the whole club" },
                   { emoji: "📖", text: "Start a Group Read and see everyone's progress in real time" },
                   { emoji: "🔗", text: "Invite families via a shareable link — instant access" },
                 ].map(({ emoji, text }) => (
