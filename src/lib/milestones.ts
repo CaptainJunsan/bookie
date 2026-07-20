@@ -81,7 +81,7 @@ export function milestoneKey(memberId: string, type: MilestoneType, value: numbe
 
 export async function fetchCelebratedMilestones(
   memberIds: string[]
-): Promise<Record<string, Record<MilestoneType, Set<number>>>> {
+): Promise<Record<string, Record<MilestoneType, Set<number>>> | null> {
   if (memberIds.length === 0) return {};
   try {
     const { data, error } = await supabase
@@ -89,7 +89,10 @@ export async function fetchCelebratedMilestones(
       .select("member_id, milestone_type, milestone_value")
       .in("member_id", memberIds);
 
-    if (error) return {};
+    if (error) {
+      console.error("fetchCelebratedMilestones failed:", error);
+      return null; // signal failure — never treat this as "nothing celebrated yet"
+    }
 
     const out: Record<string, Record<MilestoneType, Set<number>>> = {};
     for (const row of data ?? []) {
@@ -99,8 +102,9 @@ export async function fetchCelebratedMilestones(
       out[mid][type].add(row.milestone_value as number);
     }
     return out;
-  } catch {
-    return {};
+  } catch (err) {
+    console.error("fetchCelebratedMilestones threw:", err);
+    return null;
   }
 }
 
@@ -108,14 +112,20 @@ export async function markMilestoneCelebrated(
   memberId: string,
   type: MilestoneType,
   value: number
-): Promise<void> {
+): Promise<boolean> {
   try {
-    await supabase.from("milestone_celebrations").upsert(
+    const { error } = await supabase.from("milestone_celebrations").upsert(
       { member_id: memberId, milestone_type: type, milestone_value: value },
       { onConflict: "member_id,milestone_type,milestone_value", ignoreDuplicates: true }
     );
-  } catch {
-    // silently ignore — localStorage is the primary guard
+    if (error) {
+      console.error("markMilestoneCelebrated failed:", error);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error("markMilestoneCelebrated threw:", err);
+    return false;
   }
 }
 

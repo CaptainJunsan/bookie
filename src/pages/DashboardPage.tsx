@@ -114,44 +114,57 @@ export default function DashboardPage() {
   }
 
   async function checkMilestones(
-    books: Book[],
-    progress: ReadingProgress[]
-  ) {
-    if (!family) return;
-    const memberIds = allMembers.map((m) => m.id);
+  books: Book[],
+  progress: ReadingProgress[]
+) {
+  if (!family) return;
+  const memberIds = allMembers.map((m) => m.id);
 
-    // 1. Check localStorage first — synchronous, survives remounts and page refreshes
-    const localCelebrated = getLocalCelebrated(family.id);
-
-    // 2. Also fetch from DB to catch milestones marked on other devices
-    const celebratedMap = await fetchCelebratedMilestones(memberIds);
-
-    const statsMap: Record<string, ReturnType<typeof computeMemberStats>> = {};
-    for (const m of allMembers) {
-      statsMap[m.id] = computeMemberStats(m.id, progress, books);
-    }
-
-    // 3. Compute all milestones that crossed a threshold
-    const allPending = computePendingMilestones(allMembers as FamilyMember[], statsMap, celebratedMap);
-
-    // 4. Filter out anything already recorded in localStorage
-    const pending = allPending.filter(
-      (p) => !localCelebrated.has(milestoneKey(p.memberId, p.type, p.value))
-    );
-
-    if (pending.length === 0) return;
-
-    // 5. Persist ALL to both localStorage and DB immediately, before showing any modal.
-    //    This means even if the user navigates away mid-queue, they won't see them again.
-    for (const p of pending) {
-      markLocalCelebrated(family.id, milestoneKey(p.memberId, p.type, p.value));
-    }
-    await Promise.all(
-      pending.map((p) => markMilestoneCelebrated(p.memberId, p.type, p.value))
-    );
-
-    setMilestoneQueue(pending);
+  // 1. DB is the source of truth across devices. If we can't read it,
+  //    bail out this session instead of risking a false re-celebration.
+  const celebratedMap = await fetchCelebratedMilestones(memberIds);
+  if (celebratedMap === null) {
+    console.warn("Skipping milestone check — could not verify celebration history.");
+    return;
   }
+
+  // 2. localStorage now only guards against double-queueing within this
+  //    browser session — it is never treated as authoritative.
+  const localCelebrated = getLocalCelebrated(family.id);
+
+  const statsMap: Record<string, ReturnType<typeof computeMemberStats>> = {};
+  for (const m of allMembers) {
+    statsMap[m.id] = computeMemberStats(m.id, progress, books);
+  }
+
+  const allPending = computePendingMilestones(allMembers as FamilyMember[], statsMap, celebratedMap);
+
+  const pending = allPending.filter(
+    (p) => !localCelebrated.has(milestoneKey(p.memberId, p.type, p.value))
+  );
+  if (pending.length === 0) return;
+
+  // 3. Write first, show only what's confirmed written. A failed write means
+  //    we'll safely re-offer that milestone next session instead of it
+  //    silently vanishing — but we won't celebrate it now unconfirmed.
+  const results = await Promise.all(
+    pending.map(async (p) => ({
+      milestone: p,
+      saved: await markMilestoneCelebrated(p.memberId, p.type, p.value),
+    }))
+  );
+
+  const confirmed = results.filter((r) => r.saved).map((r) => r.milestone);
+  const failed = results.filter((r) => !r.saved).map((r) => r.milestone);
+  if (failed.length > 0) {
+    console.error(`Failed to persist ${failed.length} milestone(s) — will retry next session.`, failed);
+  }
+
+  for (const p of confirmed) {
+    markLocalCelebrated(family.id, milestoneKey(p.memberId, p.type, p.value));
+  }
+  if (confirmed.length > 0) setMilestoneQueue(confirmed);
+}
 
   function dismissCurrentMilestone() {
     // Already persisted in checkMilestones — just advance the display queue.
