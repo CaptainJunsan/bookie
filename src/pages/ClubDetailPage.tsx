@@ -1690,17 +1690,26 @@ export default function ClubDetailPage() {
             {/* Scrollable content */}
             <div className="overflow-y-auto flex-1 px-6 pb-2">
               {/* Selected preview */}
-              {bookPreview && (
-                <div className="mb-3 p-3 rounded-xl border-2 border-primary bg-primary/5 flex gap-3 items-start">
-                  <BookCover src={bookPreview.cover_url || undefined} isbn={bookPreview.isbn || undefined} title={bookPreview.title} className="w-12 h-16 rounded object-cover shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-sm leading-snug">{bookPreview.title}</p>
-                    {bookPreview.author && <p className="text-xs text-muted-foreground mt-0.5">{bookPreview.author}</p>}
-                    {bookPreview.page_count && <p className="text-xs text-muted-foreground">{bookPreview.page_count} pages</p>}
-                    <button onClick={() => setBookPreview(null)} className="text-[11px] text-primary hover:underline mt-1">Change selection</button>
+              {bookPreview && (() => {
+                const previewDupe = books.some((b) => {
+                  if (bookPreview.isbn && b.isbn && b.isbn === bookPreview.isbn) return true;
+                  return b.title.trim().toLowerCase() === (bookPreview.title ?? "").trim().toLowerCase();
+                });
+                return (
+                  <div className={`mb-3 p-3 rounded-xl border-2 flex gap-3 items-start ${previewDupe ? "border-amber-400 bg-amber-500/8" : "border-primary bg-primary/5"}`}>
+                    <BookCover src={bookPreview.cover_url || undefined} isbn={bookPreview.isbn || undefined} title={bookPreview.title} className="w-12 h-16 rounded object-cover shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-sm leading-snug">{bookPreview.title}</p>
+                      {bookPreview.author && <p className="text-xs text-muted-foreground mt-0.5">{bookPreview.author}</p>}
+                      {bookPreview.page_count && <p className="text-xs text-muted-foreground">{bookPreview.page_count} pages</p>}
+                      {previewDupe && (
+                        <p className="text-[11px] font-semibold text-amber-600 mt-1">⚠ This book is already in the club library</p>
+                      )}
+                      <button onClick={() => setBookPreview(null)} className="text-[11px] text-primary hover:underline mt-1">Change selection</button>
+                    </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
 
               {/* Result list */}
               {!bookPreview && (
@@ -1716,20 +1725,28 @@ export default function ClubDetailPage() {
                   )}
                   {!lookingUp && bookResults.length > 0 && (
                     <div className="space-y-1.5 pb-2">
-                      {bookResults.map((r) => (
-                        <button key={r.key} type="button" onClick={() => handleSelectBookResult(r)}
-                          className="w-full flex items-center gap-3 p-2.5 rounded-xl hover:bg-muted transition-colors text-left">
-                          {r.cover_i
-                            ? <img src={`https://covers.openlibrary.org/b/id/${r.cover_i}-M.jpg`} alt="" className="w-9 h-12 rounded object-cover shrink-0 bg-muted" />
-                            : <div className="w-9 h-12 rounded bg-muted flex items-center justify-center shrink-0"><BookOpen size={14} className="text-muted-foreground" /></div>}
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-semibold leading-snug truncate">{r.title}</p>
-                            {r.author_name?.[0] && <p className="text-xs text-muted-foreground truncate">{r.author_name[0]}</p>}
-                            {r.number_of_pages_median && <p className="text-xs text-muted-foreground">{r.number_of_pages_median} pages</p>}
-                          </div>
-                          <ChevronRight size={14} className="text-muted-foreground shrink-0" />
-                        </button>
-                      ))}
+                      {bookResults.map((r) => {
+                        const rIsbn = r.isbn?.find((i) => i.length === 13) ?? r.isbn?.[0];
+                        const isDupe = books.some((b) => {
+                          if (rIsbn && b.isbn && b.isbn === rIsbn) return true;
+                          return b.title.trim().toLowerCase() === r.title.trim().toLowerCase();
+                        });
+                        return (
+                          <button key={r.key} type="button" onClick={() => handleSelectBookResult(r)}
+                            className={`w-full flex items-center gap-3 p-2.5 rounded-xl transition-colors text-left ${isDupe ? "bg-amber-500/8 hover:bg-amber-500/15" : "hover:bg-muted"}`}>
+                            {r.cover_i
+                              ? <img src={`https://covers.openlibrary.org/b/id/${r.cover_i}-M.jpg`} alt="" className="w-9 h-12 rounded object-cover shrink-0 bg-muted" />
+                              : <div className="w-9 h-12 rounded bg-muted flex items-center justify-center shrink-0"><BookOpen size={14} className="text-muted-foreground" /></div>}
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-semibold leading-snug truncate">{r.title}</p>
+                              {r.author_name?.[0] && <p className="text-xs text-muted-foreground truncate">{r.author_name[0]}</p>}
+                              {r.number_of_pages_median && <p className="text-xs text-muted-foreground">{r.number_of_pages_median} pages</p>}
+                              {isDupe && <p className="text-[11px] font-semibold text-amber-600 mt-0.5">Already in club library</p>}
+                            </div>
+                            <ChevronRight size={14} className="text-muted-foreground shrink-0" />
+                          </button>
+                        );
+                      })}
                     </div>
                   )}
                 </>
