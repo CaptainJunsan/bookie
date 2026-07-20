@@ -107,7 +107,7 @@ export default function BooksPage() {
           <span className="text-4xl animate-bounce">📚</span>
         </div>
       ) : filtered.length > 0 ? (
-        <div className="space-y-3">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
           {filtered.map(({ book, progress, ratings }) => (
             <BookCard
               key={book.id}

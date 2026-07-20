@@ -64,7 +64,7 @@ export default function Layout() {
             <div className="border-t border-border my-2" />
             <SideNavItem to="/dashboard" icon={<LayoutDashboard size={18} />} label="Home" />
             <SideNavItem to="/books" icon={<BookMarked size={18} />} label="Library" />
-            <SideNavItem to="/search" icon={<Search size={18} />} label="Search" />
+            <SideNavItem to="/search" icon={<Search size={18} />} label="Find a book" />
             <SideNavItem to="/clubs" icon={<Users size={18} />} label="Clubs" badge={hasClubNotifs} />
             <SideNavItem to="/settings" icon={<Settings size={18} />} label="Settings" badge={missingAgeGroups} />
           </nav>
@@ -129,7 +129,7 @@ export default function Layout() {
           <div className="max-w-2xl mx-auto px-2 pt-2 pb-[22px] flex items-center justify-around">
             <NavItem to="/dashboard" icon={<LayoutDashboard size={20} />} label="Home" />
             <NavItem to="/books" icon={<BookMarked size={20} />} label="Library" />
-            <NavItem to="/search" icon={<Search size={20} />} label="Search" />
+            <NavItem to="/search" icon={<Search size={20} />} label="Find" />
             <NavItem to="/clubs" icon={<Users size={20} />} label="Clubs" badge={hasClubNotifs} />
             <NavItem to="/settings" icon={<Settings size={20} />} label="Settings" badge={missingAgeGroups} />
           </div>

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router";
-import { Camera, Search, ArrowLeft, Upload, Loader2, BookOpen, X } from "lucide-react";
+import { Camera, Search, ArrowLeft, Upload, Loader2, BookOpen, X, Check } from "lucide-react";
 import { supabase, fetchBookByIsbn } from "../lib/supabase";
 import { useAuth } from "../contexts/AuthContext";
 import { toast } from "sonner";
@@ -11,6 +11,7 @@ export default function AddBookPage() {
   const { family, member } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const [existingIsbns, setExistingIsbns] = useState<string[]>([]);
   const [isbn, setIsbn] = useState("");
   const [title, setTitle] = useState("");
   const [author, setAuthor] = useState("");
@@ -66,6 +67,13 @@ export default function AddBookPage() {
       controlsRef.current = null;
     };
   }, [scannerActive]);
+
+  useEffect(() => {
+    if (!family) return;
+    supabase.from("books").select("isbn").eq("family_id", family.id).then(({ data }) => {
+      if (data) setExistingIsbns(data.map((b: { isbn: string | null }) => b.isbn).filter(Boolean) as string[]);
+    });
+  }, [family]);
 
   async function handleBarcode(code: string) {
     setIsbn(code);
@@ -183,12 +191,15 @@ export default function AddBookPage() {
 
   return (
     <div className="max-w-2xl mx-auto px-4 lg:px-8 py-6 pb-24 lg:pb-10">
-      <div className="flex items-center gap-3 mb-6">
+      <div className="flex items-center gap-3 mb-2">
         <button onClick={() => navigate(-1)} className="w-9 h-9 rounded-xl bg-secondary flex items-center justify-center hover:bg-muted transition-colors">
           <ArrowLeft size={18} />
         </button>
         <h1 className="font-display text-2xl font-bold">Add a book</h1>
       </div>
+      <p className="text-sm text-muted-foreground mb-6 pl-12 leading-relaxed">
+        Scan the ISBN barcode of a book you already own to add it to your Bookie library for easy reading progress tracking. You can also manually enter your book details if you can&apos;t find it via the ISBN scan.
+      </p>
 
       {/* ISBN + Scanner */}
       <div className="bg-card border border-border rounded-2xl p-4 mb-5">
@@ -373,6 +384,12 @@ export default function AddBookPage() {
           <p className="text-xs text-muted-foreground mt-1">Used to show reading progress as a percentage.</p>
         </div>
 
+        {isbn.trim() && existingIsbns.includes(isbn.trim().replace(/[-\s]/g, "")) && (
+          <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-amber-500/10 border border-amber-400/30 text-amber-700 dark:text-amber-400 text-sm font-medium">
+            <Check size={15} className="shrink-0" />
+            This ISBN is already in your library
+          </div>
+        )}
         <button
           onClick={save}
           disabled={saving || !title.trim()}

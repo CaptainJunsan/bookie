@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
-import { BookOpen, PlusCircle, TrendingUp } from "lucide-react";
+import { BookOpen, PlusCircle, TrendingUp, Search, Users } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../contexts/AuthContext";
 import ReaderProfileSheet from "../components/ReaderProfileSheet";
@@ -174,7 +174,10 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="max-w-2xl lg:max-w-none mx-auto lg:mx-0 px-4 lg:px-10 py-6 pb-24 lg:pb-10 space-y-8">
+    <div className="max-w-2xl lg:max-w-none mx-auto lg:mx-0 px-4 lg:px-10 py-6 pb-24 lg:pb-10">
+      <div className="lg:grid lg:grid-cols-[1fr_300px] xl:grid-cols-[1fr_340px] lg:gap-8 lg:items-start space-y-8 lg:space-y-0">
+      {/* ── Left / main column ── */}
+      <div className="space-y-8">
       {/* Welcome */}
       <div>
         <p className="text-sm text-muted-foreground font-medium">{greeting()},</p>
@@ -312,8 +315,8 @@ export default function DashboardPage() {
         </section>
       )}
 
-      {/* Family readers — each card tappable */}
-      <section>
+      {/* Family readers — mobile only (also in desktop right panel) */}
+      <section className="lg:hidden">
         <h2 className="font-display font-bold text-lg mb-3">Your readers</h2>
         <div className="flex gap-3 flex-wrap">
           {allMembers.map((m) => {
@@ -342,17 +345,17 @@ export default function DashboardPage() {
             <h2 className="font-display font-bold text-lg">Recent books</h2>
             <button onClick={() => navigate("/books")} className="text-sm text-primary font-semibold hover:underline">See all</button>
           </div>
-          <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-            {recentBooks.slice(0, 10).map(({ book, rating }) => (
+          <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+            {recentBooks.slice(0, 6).map(({ book, rating }) => (
               <button
                 key={book.id}
                 onClick={() => navigate(`/books/${book.id}`)}
                 className="text-left bg-card border border-border rounded-2xl overflow-hidden hover:shadow-md hover:border-primary/30 transition-all active:scale-[0.98]"
               >
                 {book.cover_url ? (
-                  <img src={book.cover_url} alt={book.title} className="w-full h-32 object-cover bg-secondary" />
+                  <img src={book.cover_url} alt={book.title} className="w-full h-36 object-cover bg-secondary" />
                 ) : (
-                  <div className="w-full h-32 bg-secondary flex items-center justify-center text-4xl">📘</div>
+                  <div className="w-full h-36 bg-secondary flex items-center justify-center text-4xl">📘</div>
                 )}
                 <div className="p-2.5">
                   <p className="font-display font-bold text-xs leading-snug line-clamp-2">{book.title}</p>
@@ -377,6 +380,79 @@ export default function DashboardPage() {
           </button>
         </div>
       )}
+      </div>{/* end left column */}
+
+      {/* ── Right panel — desktop only ── */}
+      <aside className="hidden lg:block space-y-6 lg:sticky lg:top-6">
+        {/* Readers */}
+        <div className="bg-card border border-border rounded-2xl p-4">
+          <h2 className="font-display font-bold text-base mb-3">Your readers</h2>
+          <div className="space-y-2">
+            {allMembers.map((m) => {
+              const booksRead = stats.finishedCountByMember[m.id] ?? 0;
+              const pct = stats.totalBooks > 0 ? Math.round((booksRead / stats.totalBooks) * 100) : 0;
+              return (
+                <button
+                  key={m.id}
+                  onClick={() => setSelectedReader(m as FamilyMember)}
+                  className="w-full flex items-center gap-3 p-2.5 rounded-xl hover:bg-muted transition-colors text-left"
+                >
+                  <span className="text-2xl shrink-0">{m.avatar_emoji}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold truncate">{m.nickname}</p>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
+                        <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: m.color }} />
+                      </div>
+                      <span className="text-[10px] text-muted-foreground shrink-0">{booksRead} read</span>
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Star reader callout */}
+        {stats.bestReaders.length > 0 && stats.bestReaderCount > 0 && (
+          <div className="bg-gradient-to-br from-primary to-primary/80 rounded-2xl p-4 text-primary-foreground">
+            <p className="text-xs font-semibold text-primary-foreground/70 uppercase tracking-wide mb-2 flex items-center gap-1">
+              <TrendingUp size={11} /> Star reader{stats.bestReaders.length > 1 ? "s" : ""}
+            </p>
+            <div className="space-y-1.5">
+              {stats.bestReaders.map((r) => (
+                <button key={r.id} onClick={() => setSelectedReader(r as FamilyMember)}
+                  className="w-full flex items-center gap-2 hover:opacity-80 transition-opacity text-left">
+                  <span className="text-2xl">{r.avatar_emoji}</span>
+                  <div>
+                    <p className="font-display font-bold text-sm">{r.nickname}</p>
+                    <p className="text-xs text-primary-foreground/70">{stats.bestReaderCount} book{stats.bestReaderCount !== 1 ? "s" : ""} finished 🏆</p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Quick links */}
+        <div className="bg-card border border-border rounded-2xl p-4 space-y-1.5">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Quick links</p>
+          <button onClick={() => navigate("/books/add")}
+            className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-muted transition-colors text-sm font-semibold text-left">
+            <PlusCircle size={16} className="text-primary shrink-0" /> Add a book
+          </button>
+          <button onClick={() => navigate("/search")}
+            className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-muted transition-colors text-sm font-semibold text-left">
+            <Search size={16} className="text-primary shrink-0" /> Find a book
+          </button>
+          <button onClick={() => navigate("/clubs")}
+            className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-muted transition-colors text-sm font-semibold text-left">
+            <Users size={16} className="text-primary shrink-0" /> Reading clubs
+          </button>
+        </div>
+      </aside>
+
+      </div>{/* end grid */}
 
       {/* Reader profile sheet */}
       <ReaderProfileSheet

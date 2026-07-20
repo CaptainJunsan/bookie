@@ -826,13 +826,18 @@ export default function ClubDetailPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="max-w-2xl mx-auto px-4 pb-28 lg:pb-10">
+      <div className="max-w-2xl lg:max-w-none mx-auto px-4 lg:px-10 pb-28 lg:pb-10">
 
         <div className="pt-4 lg:pt-8 mb-4">
           <button onClick={() => navigate("/clubs")} className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
             <ArrowLeft size={16} />All Clubs
           </button>
         </div>
+
+        {/* ── Desktop two-column grid ── */}
+        <div className="lg:grid lg:grid-cols-[1fr_280px] xl:grid-cols-[1fr_300px] lg:gap-8 lg:items-start">
+        {/* Left / main column */}
+        <div>
 
         {/* Club header */}
         <div className="bg-card border border-border rounded-2xl p-5 mb-4">
@@ -1486,6 +1491,67 @@ export default function ClubDetailPage() {
             )}
           </div>
         )}
+        </div>{/* end left column */}
+
+        {/* ── Right panel — desktop only ── */}
+        <aside className="hidden lg:block space-y-4 lg:sticky lg:top-6">
+          {/* Club card */}
+          <div className="bg-card border border-border rounded-2xl p-4">
+            <div className="flex items-center gap-3 mb-3">
+              <span className="text-3xl">{club.emoji}</span>
+              <div className="min-w-0">
+                <p className="font-display font-bold text-sm leading-snug truncate">{club.name}</p>
+                <p className="text-xs text-muted-foreground">{clubMembers.length} member{clubMembers.length !== 1 ? "s" : ""}</p>
+              </div>
+            </div>
+            {club.description && <p className="text-xs text-muted-foreground mb-3 leading-relaxed">{club.description}</p>}
+            {currentRead && (
+              <div className="mt-2 pt-3 border-t border-border">
+                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">Currently reading</p>
+                <div className="flex gap-2 items-center">
+                  <BookCover src={currentRead.cover_url || undefined} isbn={currentRead.isbn || undefined} title={currentRead.title} className="w-8 h-12 rounded object-cover shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold leading-snug line-clamp-2">{currentRead.title}</p>
+                    {currentRead.author && <p className="text-[11px] text-muted-foreground">{currentRead.author}</p>}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Members snapshot */}
+          <div className="bg-card border border-border rounded-2xl p-4">
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-3">Members</p>
+            <div className="space-y-2">
+              {clubMembers.slice(0, 6).map((cm) => {
+                const fm = cm.family_member as typeof allMembers[number] | undefined;
+                if (!fm) return null;
+                return (
+                  <div key={cm.id} className="flex items-center gap-2">
+                    <span className="text-base shrink-0">{fm.avatar_emoji}</span>
+                    <span className="text-xs font-semibold flex-1 truncate">{fm.nickname}</span>
+                    {cm.role !== "member" && (
+                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-primary/10 text-primary capitalize">{cm.role}</span>
+                    )}
+                  </div>
+                );
+              })}
+              {clubMembers.length > 6 && (
+                <button onClick={() => setActiveTab("members")} className="text-xs text-primary hover:underline font-semibold mt-1">
+                  +{clubMembers.length - 6} more
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Help button */}
+          <button onClick={() => setShowClubInfo(true)}
+            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-border text-sm text-muted-foreground hover:bg-muted hover:text-foreground transition-colors">
+            <HelpCircle size={14} /> How clubs work
+          </button>
+        </aside>
+
+        </div>{/* end grid */}
       </div>
 
       {/* ── Club Info Modal ── */}
@@ -1703,7 +1769,7 @@ export default function ClubDetailPage() {
                       {bookPreview.author && <p className="text-xs text-muted-foreground mt-0.5">{bookPreview.author}</p>}
                       {bookPreview.page_count && <p className="text-xs text-muted-foreground">{bookPreview.page_count} pages</p>}
                       {previewDupe && (
-                        <p className="text-[11px] font-semibold text-amber-600 mt-1">⚠ This book is already in the club library</p>
+                        <p className="text-[11px] font-semibold text-amber-600 mt-1">⚠ Already in reading list</p>
                       )}
                       <button onClick={() => setBookPreview(null)} className="text-[11px] text-primary hover:underline mt-1">Change selection</button>
                     </div>
@@ -1741,7 +1807,7 @@ export default function ClubDetailPage() {
                               <p className="text-sm font-semibold leading-snug truncate">{r.title}</p>
                               {r.author_name?.[0] && <p className="text-xs text-muted-foreground truncate">{r.author_name[0]}</p>}
                               {r.number_of_pages_median && <p className="text-xs text-muted-foreground">{r.number_of_pages_median} pages</p>}
-                              {isDupe && <p className="text-[11px] font-semibold text-amber-600 mt-0.5">Already in club library</p>}
+                              {isDupe && <p className="text-[11px] font-semibold text-amber-600 mt-0.5">Already in reading list</p>}
                             </div>
                             <ChevronRight size={14} className="text-muted-foreground shrink-0" />
                           </button>

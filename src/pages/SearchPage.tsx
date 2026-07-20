@@ -195,6 +195,25 @@ export default function SearchPage() {
   const isParent = member ? !member.is_child : false;
   const children = (allMembers as FamilyMember[]).filter((m) => m.is_child);
 
+  // ── Existing library for duplicate detection ──
+  const [libraryIsbns, setLibraryIsbns] = useState<Set<string>>(new Set());
+  const [libraryTitles, setLibraryTitles] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!family) return;
+    supabase.from("books").select("isbn,title").eq("family_id", family.id).then(({ data }) => {
+      if (!data) return;
+      setLibraryIsbns(new Set(data.map((b: { isbn: string | null }) => b.isbn).filter(Boolean) as string[]));
+      setLibraryTitles(new Set(data.map((b: { title: string }) => b.title.trim().toLowerCase())));
+    });
+  }, [family]);
+
+  function isInLibrary(result: OLDoc): boolean {
+    const isbn = result.isbn?.find((i) => i.length === 13) ?? result.isbn?.[0];
+    if (isbn && libraryIsbns.has(isbn)) return true;
+    return libraryTitles.has(result.title.trim().toLowerCase());
+  }
+
   // ── Search state ──
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
@@ -391,7 +410,8 @@ export default function SearchPage() {
 
   return (
     <div className="max-w-2xl lg:max-w-none mx-auto lg:mx-0 px-4 lg:px-10 py-6 pb-24 lg:pb-10">
-      <h1 className="font-display text-2xl font-bold mb-5">Search Books</h1>
+      <h1 className="font-display text-2xl font-bold mb-1">Find a book</h1>
+      <p className="text-sm text-muted-foreground mb-5 leading-relaxed">Search global databases for books you can add to your library, or want to read in future.</p>
 
       {/* Search bar */}
       <div className="flex gap-2 mb-6">
@@ -465,19 +485,21 @@ export default function SearchPage() {
 
       {/* Results list */}
       {!searching && results.length > 0 && (
-        <div className="space-y-3">
-          <p className="text-xs text-muted-foreground font-medium px-1">
+        <div>
+          <p className="text-xs text-muted-foreground font-medium px-1 mb-3">
             {results.length} result{results.length !== 1 ? "s" : ""}
           </p>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
           {results.map((result) => {
             const coverUrl = result.cover_i
               ? `https://covers.openlibrary.org/b/id/${result.cover_i}-M.jpg`
               : null;
             const isAdded = result.addStatus === "library" || result.addStatus === "want";
             const isAdding = result.addStatus === "adding";
+            const alreadyOwned = isInLibrary(result);
 
             return (
-              <div key={result.key} className="bg-card border border-border rounded-2xl overflow-hidden">
+              <div key={result.key} className={`bg-card border rounded-2xl overflow-hidden ${alreadyOwned && !isAdded ? "border-primary/40" : "border-border"}`}>
                 <button
                   onClick={() => openDetail(result)}
                   className="w-full flex gap-4 p-4 text-left hover:bg-secondary/40 transition-colors"
@@ -507,9 +529,16 @@ export default function SearchPage() {
                     {result.number_of_pages_median && (
                       <p className="text-xs text-muted-foreground">{result.number_of_pages_median} pages</p>
                     )}
-                    <p className="text-xs text-primary font-medium mt-1.5 flex items-center gap-0.5">
-                      View details <ChevronRight size={11} />
-                    </p>
+                    {alreadyOwned && !isAdded && (
+                      <span className="inline-flex items-center gap-1 mt-1.5 text-[11px] font-semibold text-primary bg-primary/8 rounded-full px-2 py-0.5">
+                        <Check size={10} /> In library
+                      </span>
+                    )}
+                    {!alreadyOwned && !isAdded && (
+                      <p className="text-xs text-primary font-medium mt-1.5 flex items-center gap-0.5">
+                        View details <ChevronRight size={11} />
+                      </p>
+                    )}
                   </div>
                   {isAdded && (
                     <Check size={16} className="text-primary flex-shrink-0 mt-1" />
@@ -545,6 +574,7 @@ export default function SearchPage() {
               </div>
             );
           })}
+        </div>{/* grid */}
         </div>
       )}
 
