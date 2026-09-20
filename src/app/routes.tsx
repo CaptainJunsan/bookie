@@ -10,6 +10,7 @@ import BooksPage from "../pages/BooksPage";
 import BookDetailPage from "../pages/BookDetailPage";
 import AddBookPage from "../pages/AddBookPage";
 import SearchPage from "../pages/SearchPage";
+import ExplorePage from "../pages/ExplorePage";
 import SettingsPage from "../pages/SettingsPage";
 import AdminDashboard from "../pages/AdminDashboard";
 import ClubsPage from "../pages/ClubsPage";
@@ -64,22 +65,28 @@ export const router = createBrowserRouter([
         }
         return null;
       }},
-      { path: "auth", Component: AuthPage, loader: requireNoAuth },
-      { path: "invite/:token", Component: InvitePage },
-      { path: "onboarding", Component: OnboardingPage, loader: requireAuth },
-      { path: "dashboard", Component: DashboardPage, loader: requireAuthWithFamily },
-      { path: "books", Component: BooksPage, loader: requireAuthWithFamily },
-      { path: "books/add", Component: AddBookPage, loader: requireAuthWithFamily },
-      { path: "books/:id", Component: BookDetailPage, loader: requireAuthWithFamily },
-      { path: "search", Component: SearchPage, loader: requireAuthWithFamily },
-      { path: "settings", Component: SettingsPage, loader: requireAuthWithFamily },
-      { path: "clubs", Component: ClubsPage, loader: requireAuthWithFamily },
-      { path: "clubs/invite/:token", Component: ClubInvitePage },
-      { path: "clubs/:id", Component: ClubDetailPage, loader: requireAuthWithFamily },
-      { path: "admin", Component: AdminDashboard, loader: requireAuthWithFamily },
-      { path: "about", Component: AboutPage },
-      { path: "privacy", Component: PrivacyPage },
-      { path: "terms", Component: TermsPage },
+      { path: "auth",                Component: AuthPage,        loader: requireNoAuth },
+      { path: "invite/:token",        Component: InvitePage },
+      { path: "onboarding",           Component: OnboardingPage,  loader: requireAuth },
+      { path: "dashboard",            Component: DashboardPage,   loader: requireAuthWithFamily },
+      { path: "books",                Component: BooksPage,       loader: requireAuthWithFamily },
+      { path: "books/add",            Component: AddBookPage,     loader: requireAuthWithFamily },
+      { path: "books/:id",            Component: BookDetailPage,  loader: requireAuthWithFamily },
+      // /search kept for backward compat; content absorbed into ExplorePage
+      { path: "search",               Component: SearchPage,      loader: requireAuthWithFamily },
+      // New Explore tab (4th nav slot)
+      { path: "explore",              Component: ExplorePage,     loader: requireAuthWithFamily },
+      // Universal class/club join code route (Phase 6 — placeholder for now)
+      { path: "join",                 Component: ExplorePage,     loader: requireAuthWithFamily },
+      { path: "join/:code",           Component: ExplorePage,     loader: requireAuthWithFamily },
+      { path: "settings",             Component: SettingsPage,    loader: requireAuthWithFamily },
+      { path: "clubs",                Component: ClubsPage,       loader: requireAuthWithFamily },
+      { path: "clubs/invite/:token",  Component: ClubInvitePage },
+      { path: "clubs/:id",            Component: ClubDetailPage,  loader: requireAuthWithFamily },
+      { path: "admin",                Component: AdminDashboard,  loader: requireAuthWithFamily },
+      { path: "about",                Component: AboutPage },
+      { path: "privacy",              Component: PrivacyPage },
+      { path: "terms",                Component: TermsPage },
     ],
   },
 ]);

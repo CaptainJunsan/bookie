@@ -33,7 +33,7 @@
   --chart-3: #2D6B9F;
   --chart-4: #7B4F9E;
   --chart-5: #C4556A;
-  --radius: 0.875rem;
+  --radius: 1rem;
   --sidebar: #F5EFE4;
   --sidebar-foreground: #1C110A;
   --sidebar-primary: #3B6E52;
@@ -42,6 +42,16 @@
   --sidebar-accent-foreground: #1C110A;
   --sidebar-border: rgba(60, 35, 15, 0.12);
   --sidebar-ring: #3B6E52;
+
+  /* ── Extended semantic tokens ── */
+  --highlight: #4EA8C8;          /* sky blue — school / explore accent */
+  --highlight-foreground: #FFFDF8;
+  --star: #F2C94C;               /* golden — star reader, badges, achievements */
+  --star-foreground: #2C1A0E;
+  --school: #7B4F9E;             /* purple — school-specific elements */
+  --school-foreground: #FFFDF8;
+  --streak: #E07040;             /* warm orange — streak / fire */
+  --streak-foreground: #FFFDF8;
 }
 
 .dark {
@@ -79,6 +89,16 @@
   --sidebar-accent-foreground: #F5EFE4;
   --sidebar-border: rgba(245, 235, 210, 0.1);
   --sidebar-ring: #5A9E78;
+
+  /* ── Extended semantic tokens — dark ── */
+  --highlight: #5BBAD6;
+  --highlight-foreground: #0D2030;
+  --star: #F5D060;
+  --star-foreground: #2C1A0E;
+  --school: #9B72CC;
+  --school-foreground: #1A0D2E;
+  --streak: #E88050;
+  --streak-foreground: #2C1200;
 }
 
 @theme inline {
@@ -112,6 +132,7 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-primary: var(--sidebar-primary);
@@ -120,6 +141,16 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+
+  /* Extended tokens available as Tailwind utilities */
+  --color-highlight: var(--highlight);
+  --color-highlight-foreground: var(--highlight-foreground);
+  --color-star: var(--star);
+  --color-star-foreground: var(--star-foreground);
+  --color-school: var(--school);
+  --color-school-foreground: var(--school-foreground);
+  --color-streak: var(--streak);
+  --color-streak-foreground: var(--streak-foreground);
 }
 
 @layer base {
@@ -191,4 +222,35 @@
     visibility: hidden;
     pointer-events: none;
   }
+}
+
+/* ── Global utility animations ─────────────────────────────────────────────── */
+@layer utilities {
+  @keyframes float {
+    0%, 100% { transform: translateY(0px) rotate(var(--float-rotate, 0deg)); }
+    50%       { transform: translateY(-8px) rotate(var(--float-rotate, 0deg)); }
+  }
+  @keyframes float-slow {
+    0%, 100% { transform: translateY(0px) rotate(var(--float-rotate, 0deg)); }
+    50%       { transform: translateY(-5px) rotate(var(--float-rotate, 0deg)); }
+  }
+  @keyframes pop {
+    0%, 100% { transform: scale(1); }
+    40%       { transform: scale(1.12); }
+    70%       { transform: scale(0.96); }
+  }
+  @keyframes badge-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--star) 60%, transparent); }
+    60%       { box-shadow: 0 0 0 7px transparent; }
+  }
+  @keyframes streak-glow {
+    0%, 100% { text-shadow: 0 0 8px color-mix(in srgb, var(--streak) 50%, transparent); }
+    50%       { text-shadow: 0 0 18px color-mix(in srgb, var(--streak) 80%, transparent); }
+  }
+
+  .animate-float      { animation: float 3.5s ease-in-out infinite; }
+  .animate-float-slow { animation: float-slow 5s ease-in-out infinite; }
+  .animate-pop        { animation: pop 0.4s cubic-bezier(0.36, 0.07, 0.19, 0.97); }
+  .animate-badge-pulse { animation: badge-pulse 2s ease-in-out infinite; }
+  .animate-streak-glow { animation: streak-glow 2s ease-in-out infinite; }
 }
