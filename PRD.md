@@ -1,34 +1,40 @@
 # Bookie — Product Requirements Document
 
-**Status:** Draft scaffold (v0.1) — created 2026-09-20, to be completed in a follow-up session.
+**Status:** Draft scaffold (v0.2) — created 2026-09-20, updated 2026-09-20. To be completed in a follow-up session.
 **Owner:** Janico Steyn
-**Scope of this draft:** grounding facts about the current app + the two prioritized issues below. Acceptance criteria, exact UX flows, and final data model are intentionally left open for the next session.
+**Scope of this draft:** grounding facts about the current app, four prioritized items (reader book list, School club type, gamification, sharing/dynamic links), and a competitive gap analysis. Acceptance criteria, exact UX flows, and final data model are intentionally left open for the next session.
 
 ---
 
 ## 0. Note on "hidden instructions" search
 
-I searched the repo for any hidden or commented instructions left for the original Figma Make agent (code comments, `guidelines/Guidelines.md`, `ATTRIBUTIONS.md`, README, HTML comments, `.env.txt`, hidden dotfiles). Findings:
+Searched the repo for any hidden or commented instructions left for the original Figma Make agent (code comments, `guidelines/Guidelines.md`, `ATTRIBUTIONS.md`, README, HTML comments, `.env.txt`, hidden dotfiles). Findings:
 
-- `guidelines/Guidelines.md` is **unfilled boilerplate** — it's the stock Figma Make template text wrapped in an HTML comment, with only the placeholder line `**Add your own guidelines here**` outside the comment. No custom guidance was ever added.
+- `guidelines/Guidelines.md` is **unfilled boilerplate** — the stock Figma Make template wrapped in an HTML comment, with only the placeholder line `**Add your own guidelines here**` outside it. No custom guidance was ever added.
 - `ATTRIBUTIONS.md` only lists open-source/photo licenses (shadcn/ui, Unsplash).
-- No `.figma-make`, `PRD`, `SPEC`, or notes files exist anywhere in the repo.
-- No suspicious/instructional comment blocks were found in `src/**` beyond ordinary section-divider comments (e.g. `// ─── Types ───`) and a few genuine engineering comments explaining non-obvious logic (e.g. the milestone-celebration write-then-confirm sequencing in `DashboardPage.tsx:116-167`).
+- No `.figma-make`, `PRD`, `SPEC`, or notes files exist anywhere in the repo, and no suspicious instructional comment blocks were found in `src/**` beyond ordinary section dividers and a few genuine engineering comments.
 
-**Conclusion: there is no hidden/prior instruction set to recover.** This PRD is being built from scratch based on the current codebase.
+**Conclusion: no hidden/prior instruction set exists.** This PRD is built from the current codebase plus external competitive research (§6).
 
 ---
 
 ## 1. Product overview
 
-**Bookie** is a mobile-first family reading-tracker web app (React + Vite, Supabase backend, deployed on Vercel), originally scaffolded via Figma Make (`figma.com/design/KXuD2WHkO8BqAIifCtFD9Y/Bookie`). It targets South African families (POPIA — Protection of Personal Information Act — is explicitly referenced throughout the Privacy Policy and Terms).
+**Bookie** is a mobile-first family reading-tracker web app (React + Vite, Supabase backend, deployed on Vercel), originally scaffolded via Figma Make. It targets South African families — POPIA is explicit in the Privacy Policy/Terms, not an afterthought.
+
+**Bookie's stated brand promise (from `src/pages/LandingPage.tsx`) is non-negotiable for any new feature:**
+> "100% free · No fees · No ads · No catch · Ever" (hero, line 67)
+> "No subscription. No ads. No fees. Just books." (CTA, line 286)
+> "A family app, by a family, for families. Free forever." (footer, line 312)
+
+This "free forever" claim is treated in this PRD as a hard product constraint (see §7) — every competitor found in the research (§6) monetizes the school/institution tier even when the family-facing product is free. Honoring "free forever" all the way into the School feature is Bookie's clearest point of differentiation.
 
 Core capabilities today:
-- **Family accounts**: one adult Supabase Auth user per family (`family_members.user_id`), with additional child profiles as sibling rows in the same family that have **no independent login** (`user_id` is null). Children are represented only by nickname, avatar emoji, role label, and a coarse `age_group` bucket — no legal name, DOB, or contact info is collected for them.
-- **Personal library**: books, reading progress (want/reading/finished), ratings/reviews, milestones (e.g. "10 books read"), a dashboard with stats and a "Star Reader" callout.
-- **Reading Clubs**: opt-in groups beyond the family, with two existing types — `social` and `educational` — books, age-banded "reading groups," discussion topics/comments with profanity filtering and moderation, join requests, invite links, and an owner-only Reports tab.
-- **Sharing**: branded PNG "share cards" (book / reader / app-invite) generated client-side and pushed through the Web Share API, plus a bare "copy link" flow for club invites.
-- **Admin**: a platform-level super-admin console (global stats, library insights, global profanity word list) — entirely separate from club-level roles.
+- **Family accounts**: one adult Supabase Auth user per family; child profiles are sibling rows in the same family with no independent login and no full legal name/DOB/contact info collected.
+- **Personal library**: books, reading progress, ratings/reviews, a dashboard, and a milestone/gamification layer (see §5.1).
+- **Reading Clubs**: `social` or `educational` types, age-banded reading groups, discussion topics with moderation, join requests, invite links, owner-only Reports tab.
+- **Sharing**: branded PNG share cards (book/reader/app-invite) via the Web Share API, plus token-based invite links for families and clubs (see §6).
+- **Admin**: platform-level super-admin console, separate from club-level roles.
 
 ---
 
@@ -36,109 +42,192 @@ Core capabilities today:
 
 | Concern | Current state | Key files |
 |---|---|---|
-| Family/member model | 1 auth user = 1 adult `family_members` row; children are extra rows, no auth, `age_group` enum only | `src/contexts/AuthContext.tsx`, `src/lib/types.ts` |
-| Personal reading data | `books`, `reading_progress`, `ratings` — all family-scoped | `supabase/schema.sql` |
-| Reading Clubs | `clubs.club_type`: `"social" \| "educational"`; `club_members.role`: `owner \| admin \| member` (flat, per-club only) | `supabase/clubs_schema.sql`, `clubs_schema_v2.sql`, `topics_schema*.sql` |
-| Reading groups | `reading_groups` (club-level, flat, age-banded: `age_min`/`age_max`); `reading_group_members` join table **exists in schema but has no assignment UI anywhere** | `supabase/clubs_schema_v2.sql`; gap confirmed in `src/pages/ClubDetailPage.tsx` |
-| Moderation | Global profanity word list (`moderation_words`, super-admin curated), per-club/per-topic toggles, per-member comment blocking | `supabase/moderation_schema.sql`, `src/lib/profanityFilter.ts` |
-| Reporting | Owner-only "Reports" tab per club: per-member/per-book stats + CSV export | `src/pages/ClubDetailPage.tsx` (Reports tab) |
-| Admin/permissions | Two disconnected tiers: platform super-admin (`is_super_admin()`) and per-club role (owner/admin/member). **No org/multi-club grouping, no granular permission flags.** | `src/lib/admin.ts`, `src/pages/AdminDashboard.tsx` |
-| Sharing | Rich branded canvas share-cards + OS share sheet for books/readers/app; plain clipboard copy for club invite links (two different maturity levels) | `src/lib/shareCard.ts`, `src/components/ShareSheet.tsx`, `ClubDetailPage.handleCopyInvite` |
-| Privacy/POPIA | Fully described in `PrivacyPage.tsx`/`TermsPage.tsx` prose only — **not enforced in the database.** No consent-logging table, no DOB, no minimum-age gate beyond the 18+ ToS clause for the account creator, no per-child consent flag. Current model assumes the enrolling adult is the child's parent/guardian. | `src/pages/PrivacyPage.tsx`, `src/pages/TermsPage.tsx` |
+| Family/member model | 1 auth user = 1 adult; children are extra rows, no auth, coarse `age_group` enum | `src/contexts/AuthContext.tsx`, `src/lib/types.ts` |
+| Reading Clubs | `club_type`: `"social" \| "educational"`; `club_members.role`: `owner \| admin \| member` (flat, per-club only) | `supabase/clubs_schema*.sql` |
+| Reading groups | Flat, age-banded (`age_min`/`age_max`); assignment table (`reading_group_members`) exists in schema but **has no UI anywhere** | `supabase/clubs_schema_v2.sql`; confirmed absent in `src/pages/ClubDetailPage.tsx` |
+| Gamification | Bookworm score + 6-tier level system, milestone celebrations (10/20/50/100 books, 1000+ pages) with personalized, gendered copy and confetti (`canvas-confetti` dependency already installed), single "Star Reader" badge per family | `src/components/ReaderProfileSheet.tsx`, `src/lib/milestones.ts`, `src/components/MilestoneModal.tsx` |
+| Sharing / invites | Token-based deep links: `/invite/:token` (family, `InvitePage.tsx`) and `/clubs/invite/:token` (club, `ClubInvitePage.tsx`) — both drive a multi-step "sign up or sign in → set up profile → auto-join" flow; separately, branded canvas share-cards for books/readers pushed through the Web Share API | `src/pages/InvitePage.tsx`, `src/pages/ClubInvitePage.tsx`, `src/lib/shareCard.ts` |
+| Admin/permissions | Two disconnected tiers: platform super-admin and per-club role. No org/multi-club grouping, no granular permission flags | `src/lib/admin.ts`, `src/pages/AdminDashboard.tsx` |
+| Privacy/POPIA | Described in `PrivacyPage.tsx`/`TermsPage.tsx` prose only — not enforced in the DB. Assumes the enrolling adult is the child's own parent | `src/pages/PrivacyPage.tsx`, `src/pages/TermsPage.tsx` |
 
 ---
 
 ## 3. Feature 1 — View all books read from a reader profile
 
+*(unchanged from v0.1 — see below)*
+
 ### 3.1 Problem
-Tapping a reader's profile (from the Dashboard) opens `ReaderProfileSheet`, which shows a "Books finished" grid capped at 10 covers. If there are more, it renders **static, non-interactive text**: `+{N} more` — there is no way to see the rest.
+Tapping a reader's profile opens `ReaderProfileSheet`, whose "Books finished" grid caps at 10 covers; beyond that it renders static, non-interactive text (`+{N} more`) with no way to see the rest.
 
-### 3.2 Current behavior (exact reference)
-- `src/components/ReaderProfileSheet.tsx:309-341` — `stats.finishedBooks.slice(0, 10)` renders a 5-column grid; if `finishedBooks.length > 10`, line 335-339 renders a plain `<p>` with `+{count - 10} more` and **no `onClick`**.
-- The sheet already has a `goToBook(bookId)` navigator (`ReaderProfileSheet.tsx:62-65`) used by every other book tile, so the tap-to-navigate pattern already exists for individual books — it's just missing at the list level.
-- `src/pages/BooksPage.tsx` is the app's only "full book list" screen. It reads `?view=<status>` from the URL (`useSearchParams`, line 20-21) but **filters by the currently signed-in member (`member?.id`) only** (line 56) — it cannot currently show another family member's (e.g. a child's) finished books via URL param.
-- A very similar truncation pattern (without a fix requested here, but worth being consistent with) exists in `src/pages/ClubDetailPage.tsx:1526-1543` for the club Members list sidebar (`+{N} more` → switches to the Members tab). That one is a good model: **"+N more" as a real, tappable affordance that reveals the rest.**
+### 3.2 Current behavior
+- `src/components/ReaderProfileSheet.tsx:309-341` — `finishedBooks.slice(0, 10)`; overflow footer at line 335-339 has no `onClick`.
+- `ReaderProfileSheet.tsx:62-65` already has a `goToBook(bookId)` navigator used by every book tile — the tap pattern exists, just not at the list level.
+- `src/pages/BooksPage.tsx` is the app's only full-book-list screen; it reads `?view=<status>` but filters by the **currently signed-in member only** (line 56) — it cannot show another reader's (e.g. a child's) books via URL param today.
+- A similar, but already-fixed-right, pattern exists in `src/pages/ClubDetailPage.tsx:1526-1543` (club Members sidebar: `+{N} more` is a real tappable affordance that switches tabs) — good reference model.
 
-### 3.3 Desired behavior (to refine next session)
-Tapping "+N more" (or the whole finished-books section) should take the user to a full list of that reader's finished books — filterable, mobile-first, and clearly scoped to that reader (not the whole family library).
-
-### 3.4 Open questions for next session
-1. **Surface**: reuse/extend `BooksPage` with a `?reader=<memberId>` param (requires loosening its `member?.id`-only filter), or build a dedicated full-screen/route (`/readers/:memberId/books`), or an in-sheet expanding list (no navigation, just "show all" within the existing bottom sheet)?
-2. **Scope**: "all books read" — finished only (matches current section title), or also include reading/want-to-read with tabs, matching `BooksPage`'s existing filter chips?
-3. Should this reuse `BooksPage`'s existing filter UI (`FilterStatus` chips) for consistency, and if so, does the "child" viewing rule matter (e.g. can a child open a sibling's list, or only a parent)?
-4. Any pagination requirement once a reader has many dozens of finished books, or is a single scrollable list sufficient at expected scale?
-
-### 3.5 Constraints
-- Mobile-first: the current bottom-sheet modal (`Dialog.Content`, max-h-90vh) is already mobile-optimized; whatever destination is chosen must work well as a full-screen mobile view, not just widen a desktop grid.
+### 3.3 Open questions
+1. Reuse `BooksPage` with a `?reader=<memberId>` param (requires loosening the self-only filter), a dedicated route, or an in-sheet "show all" expansion?
+2. Finished-only, or all statuses with the existing filter chips?
+3. Can a family member view a sibling's/child's full list, or only their own + a parent viewing a child's?
+4. Pagination needed at scale?
 
 ---
 
 ## 4. Feature 2 — Dedicated "School" reading club type
 
-### 4.1 Problem
-"Create new club" currently only offers two types — **Social** and **Educational** — both flat, single-level clubs with no school-specific structure. Schools need: a distinct creation journey, nested grouping (grade → class), tailored sharing mechanics, reporting suited to an institution, stricter/different access control, and explicit POPIA handling for minors whose data is being entered by a **teacher/school**, not a parent (a scenario the current Privacy Policy doesn't cover).
+*(unchanged from v0.1, cross-referenced with §5–§7 below — school is where gamification, sharing, and the free-forever promise all meet)*
 
-### 4.2 Current state and gaps (confirmed in code)
+### 4.1 Problem
+"Create new club" only offers Social/Educational. Schools need a distinct creation journey, nested grouping (grade → class), tailored sharing/onboarding, reporting, and access control — plus explicit POPIA handling for a **school-enrolls-student** scenario the current Privacy Policy doesn't cover (it only covers **parent-enrolls-own-child**).
+
+### 4.2 Current state and gaps
 
 | Area | Today | Gap for "School" |
 |---|---|---|
-| Club type selection | `"social" \| "educational"` radio choice in the create-club sheet (`ClubsPage.tsx:280-294`) | No `"school"` option; no branching journey after selection |
-| Grouping | `reading_groups`: one flat, age-banded list per club (name, age_min/age_max). **No member-to-group assignment UI exists** even though `reading_group_members` exists in the schema | Need **nested** grouping (e.g. Grade 4 → Class 4A/4B), not just a flat age band; need a working assignment UI (currently entirely missing) |
-| Roles | `club_members.role`: owner / admin / member — flat, per-club, no cross-club concept | Schools need role semantics like **teacher**, **school admin**, **parent/guardian**, **student**, likely with different capabilities per grade/class, not just per-club |
-| Access control | Owner = sole moderator with unrestricted control per in-app copy; admin shares most owner capabilities; no granular permission flags; no org spanning multiple clubs | Need scoped permissions (e.g. a teacher manages only their class, a school admin manages all grades) — the current model has no concept of a "parent org" (school) containing multiple clubs/classes |
-| Reporting | Owner-only Reports tab: per-member/per-book stats, CSV export, at the single-club level | Need rollups **by grade/class**, and likely multi-recipient access (teacher sees their class, school admin sees all) |
-| Sharing/invites | Two disconnected patterns: rich branded share cards (books/readers/app) vs. bare invite-link copy for clubs | Needs a school-appropriate invite/roster mechanism — e.g. per-class join codes, bulk parent invites — not designed yet |
-| POPIA / data protection | Privacy Policy only covers a **parent enrolling their own child**; consent is "the adult account holder consents on the child's behalf." No DOB, no consent logging, no data-minimization enforcement in the DB (only in prose) | A school enrolling a student is a **different lawful-processing scenario** under POPIA — the school (as a "responsible party" alongside/instead of Bookie) is entering a minor's data on behalf of parents, not as the parent. This needs its own consent/authority model, data minimization review (what does a school actually need to store — likely just first name + class, no more than today's "no full legal names" family policy), and probably a distinct retention policy (e.g. purge at end of school year/when a child leaves the school) |
+| Club type selection | `"social" \| "educational"` in `ClubsPage.tsx:280-294` | No `"school"` option or branching journey |
+| Grouping | Flat `reading_groups`; **no member-assignment UI at all** | Need nested grade→class; need the assignment UI that's missing even for today's flat groups |
+| Roles | owner/admin/member, per-club only | Need teacher/school-admin/parent/student semantics scoped per class, not just per-club |
+| Reporting | Owner-only Reports tab, single-club stats | Need grade/class rollups, multi-recipient (teacher sees class, admin sees school) |
+| Sharing/invites | Bare copy-link for clubs vs. rich share-cards for books/readers | Needs a school-appropriate bulk/roster-friendly invite mechanism (§6.3) |
+| POPIA | Parent-managed child profiles, with an existing "claim" path for the child to later take over their own account (`claim_child_member` RPC, `src/pages/InvitePage.tsx:123-134`) | **Resolved (see §7.3): reuse this exact model for School — a student is always a parent-linked `family_members` row, never a teacher-created independent identity.** |
 
-### 4.3 Desired high-level journey (draft — to detail next session)
-1. User taps **"Create new club"** → chooses club type: Social / Educational / **School** (new).
-2. Choosing **School** branches into a dedicated setup flow, distinct from the existing single-step create form, likely covering:
-   - School identity (name, location — reuse existing city/suburb fields?)
-   - Nested structure setup: grade(s) → class(es) within each grade (dynamic — add/remove grades and classes)
-   - Roles/access: who is a teacher (manages a class), who is a school admin (manages the school/all grades), how parents/students are represented
-   - Sharing mechanics for onboarding (invite teachers, invite parents per class, join codes, etc. — TBD)
-   - POPIA-relevant consent capture appropriate to a school context
+### 4.3 School as a growth lever, not just a feature
+A school onboarding a full grade brings dozens of new family sign-ups in one motion — this is a legitimate user-acquisition channel for the whole app, not only a CSR-style add-on. That reframes the priority of §5 (gamification) and §6 (sharing) as directly supporting the School journey: **schools adopt tools that make reading visibly competitive and fun (§6 gap analysis), and the easier the onboarding link/code makes it to get a whole class in, the faster it spreads (§6.3).**
 
-### 4.4 Requirement areas to scope next session
-- **Dynamic nested grouping** — data model for grade → class (or a generalized N-level group hierarchy?) replacing/extending the current flat `reading_groups` table, plus the assignment UI that doesn't exist today.
-- **Sharing mechanics** — decide the invite/onboarding pattern for a school (bulk, per-class codes, teacher-mediated, etc.), building on or replacing the existing `invite_token` link pattern.
-- **Reporting** — grade/class-level rollups on top of the existing `club_member_report`/`club_books_report` RPC pattern.
-- **Access control & permissions** — a role model beyond owner/admin/member that can scope a teacher to their class while a school admin sees everything; whether this needs a step above "club" (a "school" entity owning many class-clubs) or can be modeled as nested groups with role-per-group.
-- **POPIA data protection** — consent model for school-enrolled minors, data minimization (what fields a school role actually needs), retention/deletion rules distinct from the family model, and whether the existing Privacy Policy/Terms need a school-specific addendum.
-
-### 4.5 Open questions for next session
-1. Is a "school" a new top-level entity (owning multiple class-clubs, with its own admins), or is it one `club` of type `school` with nested `reading_groups`-as-grades-and-classes underneath it?
-2. Who is the "student" in the data model — a `family_members` row (as today), or does school enrollment need a lighter-weight identity that doesn't require a family account at all (e.g. a teacher adds "Thabo, Grade 4A" without Thabo having a Bookie family)?
-3. What exactly triggers POPIA consent in a school flow — the school's own consent process (school already has parental consent on file offline) vs. Bookie needing its own in-app consent capture? This has real legal implications and should probably get input from whoever handles compliance, not be assumed by engineering.
-4. Does a school club still support the existing club features as-is (topics/discussions, book club "group read," progress tracking), or does School intentionally disable some of those (e.g. no open discussion threads for younger grades)?
-5. Reporting audience: is it just internal to the school (teacher/admin), or could a "share with parents" report be part of "sharing mechanics"?
+### 4.4 Open questions
+1. Is "school" a new top-level entity owning multiple class-clubs, or one `club` of type `school` with nested groups underneath?
+2. ~~Who is the "student" in the data model~~ — **Resolved (2026-09-20): a student is always an existing `family_members` row, parent-managed, exactly like today.** No lighter, family-less student identity. See §7.3.
+3. ~~What triggers POPIA consent in a school flow~~ — **Resolved (2026-09-20): no new consent mechanism needed.** The existing parent-account-holder consent (Privacy Policy §3) already covers it, because a student's profile stays under the parent's family regardless of which club/school it also belongs to. See §7.3.
+4. Does a school club keep today's club features (topics, group reads) as-is, or intentionally restrict some (e.g. no open discussion threads for younger grades)?
+5. Reporting audience — internal only (teacher/admin), or a "share with parents" report as part of sharing mechanics?
+6. **New:** should a school-class join link, when opened by a family that already has a child profile in Bookie, let the parent *link an existing child* to the class (no new profile), while a brand-new family still goes through today's "create account → create child profile" flow? (Mirrors `ClubInvitePage`'s existing "pick which of your members should join" step.)
 
 ---
 
-## 5. Cross-cutting requirement: mobile-first
+## 5. Feature 3 — Gamification
 
-Both features must be designed mobile-first — the existing app already leans on bottom sheets, single-column stacks, and `lg:` breakpoints as progressive enhancement for desktop, not the other way around. Any new screens (full book list, school creation wizard, nested grouping UI) should follow that same pattern: a mobile bottom-sheet/full-screen flow first, with desktop treated as an enhancement.
+### 5.1 What Bookie already has
+- **Bookworm score** (`bookwormScore()`, `ReaderProfileSheet.tsx:13-21`): weighted formula across books finished, pages read, reviews written, currently-reading count, want-to-read count.
+- **6-tier level system** (`getLevel()`, line 23-30): Bookworm Jr. → Page Turner → Bookworm → Reading Champion → Legendary Reader → Reading Legend, each with an emoji, shown with a "next level" progress bar (`NextLevelBar`, line 387-402).
+- **Milestone celebrations** (`src/lib/milestones.ts`): book-count thresholds (10/20/50/100/150…) and page-count thresholds (1000, 2000…), with distinct, warm, **gendered/pronoun-aware** copy for the reader's own achievement vs. celebrating a child's vs. celebrating another adult's (`getMilestoneContent`, line 326-362). Fires through `MilestoneModal.tsx`. `canvas-confetti` is already a dependency, implying celebratory visual effects are part of the intended experience.
+- **Star Reader badge**: single per-family top finisher, shown on the Dashboard.
+- **Sharing the achievement**: `generateReaderShareCard()` (`shareCard.ts`) turns a reader's stats/level into a branded PNG.
+
+This is a genuinely good foundation — warm, personal, family-scale. It has **no time-boxed or social/competitive layer** yet.
+
+### 5.2 Gaps versus the market (see §6 for sources)
+| Mechanic | Common in competitors | Bookie today |
+|---|---|---|
+| Reading streaks (consecutive days) | Beanstack | Not tracked at all — no "days in a row" concept in the data model |
+| Discrete collectible badges | Beanstack, Epic | Bookie has a single evolving *level title*, not a wall of distinct earned badges |
+| Time-boxed challenges (e.g. "Read 5 books this summer," class-vs-class) | Beanstack (core mechanic), Epic | No challenge concept exists — milestones are open-ended, not goal/deadline-based |
+| Leaderboards beyond the immediate family | Beanstack, Biblionasium, SpoonRead | "Star Reader" is family-only; clubs have an owner-only Reports tab but no member-facing leaderboard |
+| Reading-buddy / friends layer | Biblionasium | No cross-family "friend" concept outside shared club membership |
+| Reading verification (quizzes, AI chat check-in) | Accelerated Reader (quizzes), Beanstack ("Book Talks with Benny") | None — Bookie is trust-based logging, matching its family-first tone rather than a school-verification tone |
+
+### 5.3 Open questions for next session
+1. Do we want reading-verification at all, or does it conflict with Bookie's "cosy family trust" positioning (Accelerated Reader is frequently criticized in the research as anxiety-inducing for exactly this reason)?
+2. Streaks: per-reader only, or also a family/class streak (whole group keeps it alive)?
+3. Badges: introduce as a genuinely new collectible system, or extend the existing level/milestone system with discrete badge art per milestone (lower engineering cost, reuses `MilestoneModal`/confetti)?
+4. Challenges: family-scoped, club-scoped, school-class-scoped, or all three sharing one underlying "challenge" table?
+5. Leaderboards: do they conflict with the family policy of "no full legal names" / nickname-only identity — need to confirm nickname-only leaderboards are acceptable at school scale (a class leaderboard of 30 kids by nickname could be ambiguous or reveal identity via context; needs privacy sign-off, ties into §7.3).
 
 ---
 
-## 6. Next steps (follow-up session agenda)
-1. Resolve the open questions in §3.4 and §4.5 (some — especially POPIA consent scope — may need non-engineering input).
-2. Turn §3 into concrete acceptance criteria and pick the implementation surface (extend `BooksPage` vs. new route vs. in-sheet expansion).
-3. Decide the data model for nested school grouping (§4.2/§4.4) before any schema migration is written.
-4. Draft the school-specific POPIA consent/data-minimization requirements as their own reviewable section.
-5. Wireframe the "Create new club → School" journey once the above is settled.
+## 6. Feature 4 — Intuitive sharing & dynamic links
+
+### 6.1 What Bookie already has (the "framework" to build on)
+Two distinct, already-working mechanisms:
+1. **Token-based deep-link invites** — `/invite/:token` (family) and `/clubs/invite/:token` (club), both resolving a `token` row server-side, then walking the user through **account → profile → auto-join** (`InvitePage.tsx`, `ClubInvitePage.tsx`). Expiring (24h for family invites), single-use, no app-store dependency since Bookie is a web app.
+2. **Branded share cards** — `src/lib/shareCard.ts` generates PNGs client-side (book, reader, generic app-invite) and pushes them through the Web Share API (`shareWithOS`), with a clipboard/WhatsApp-text fallback when the OS share sheet isn't available.
+3. **Bare link copy** — club invite currently just copies `${APP_URL}/clubs/invite/${token}` to the clipboard with no card/branding (`ClubDetailPage.handleCopyInvite`) — the least-polished of the three patterns.
+
+### 6.2 Note on "dynamic links" terminology
+Google's **Firebase Dynamic Links product was deprecated industry-wide in August 2025** — anything built today should not depend on it. This is not a setback for Bookie: since Bookie is a responsive web app (not a native iOS/Android app needing deferred-deep-link install attribution), its existing **plain token-URL pattern already is the durable, non-deprecated approach**. "Dynamic links" for Bookie should mean *smarter, context-carrying URLs* (e.g. a link that pre-fills which class/grade a student is joining), not a native mobile SDK.
+
+### 6.3 Gaps to close for a school-ready, "intuitive" sharing layer
+- **Context-aware links**: today's tokens resolve to a single family or single club. A school needs links scoped to a specific class/grade (e.g. joining via a class link should land the student directly in "Grade 4A," not just "the school club") — extends the existing token-resolution pattern rather than replacing it.
+- **Bulk/roster-friendly invites**: none of the three existing mechanisms support inviting many people at once (a teacher adding 30 students' parents) — today it's one link, shared/copied by hand.
+- **Consistency**: club invite is currently the "bare" pattern (§6.1.3) while book/reader/app invites are richly branded — worth deciding whether the school invite gets the richer treatment given it's the highest-leverage growth surface (§4.3).
+- **Short/friendly codes**: competitor and general best-practice research favors low-friction join codes (e.g. a 6-character class code a teacher reads aloud) over long token URLs for classroom settings — not present in Bookie today (tokens are opaque, presumably UUIDs).
+
+### 6.4 Open questions
+1. Should school class links be a new token type, or an extension of `invite_token`/`club_invite` with an added `reading_group_id`/class scope?
+2. Do we need short human-readable join codes in addition to URLs for a classroom (verbal sharing), or is a QR-code-of-the-existing-link sufficient?
+3. Bulk invite: CSV upload of parent emails, or a single reusable class code students self-serve with (simpler, no data entry, but weaker access control)?
+4. Should the "copy link" club-invite pattern be upgraded to match the branded share-card pattern for consistency, independent of the school work?
 
 ---
 
-## 7. Appendix — key file references
+## 7. Competitive landscape & gap analysis
+
+Researched via web search on 2026-09-20 (sources listed per finding). This is directional market research, not a formal competitive audit — worth revisiting with primary-source app trials before committing to specific mechanics.
+
+### 7.1 Summary by competitor
+- **Beanstack** — market leader for reading-challenge gamification in schools/libraries: badges, streaks, leaderboards, "friends," class/grade/school-vs-school competitions, teacher goal-setting, an AI "Book Talks with Benny" verification chat, ISBN-scan logging. **Gap: paid product for institutions**, more enterprise/library-admin flavored than family-first, no POPIA framing. ([Beanstack gamification](https://www.beanstack.com/features/reading-challenges-gamification), [Beanstack blog](https://www.beanstack.com/blog/beanstacks-mobile-app))
+- **Biblionasium** — closest analog to Bookie's tone: kid-safe social reading log, Lexile-based recommendations, parent monitoring, teacher challenges, **free for teachers**, COPPA- (not POPIA-) compliant. **Gap:** dated social feature set, US child-privacy framing only, no family+club+school continuity, no local/community club discovery like Bookie's city/suburb search. ([Common Sense Media review](https://www.commonsensemedia.org/website-reviews/biblionasium), [Biblionasium](https://www.biblionasium.com/))
+- **Epic** — huge digital library plus badges/quizzes/reading-buddies as a discovery/motivation loop. **Gap:** it's fundamentally a licensed ebook content business (subscription-gated beyond limited free access), not a tracker for physically-owned or freely-chosen books; no family collaborative tracking, no community clubs, no "free forever" claim. ([Epic pricing](https://myelearningworld.com/epic-pricing/), [Epic review](https://www.educationalappstore.com/app/epic-kids-books-and-videos))
+- **Sora (OverDrive Education)** — strong teacher book-assignment + reading dashboard + comprehension tools, SSO/rostering integration, COPPA-compliant. **Gap:** requires the school/library to own a paid digital collection; no gamification/motivation layer for reading-for-pleasure; no social/family sharing; ebook-only. ([OverDrive teaching tools](https://resources.overdrive.com/k-12-schools/sora-features/teaching-tools/), [Sora dashboard](https://company.overdrive.com/2021/09/30/sora-student-reading-dashboard-powers-teaching-intervention-and-insight/))
+- **Accelerated Reader / Scholastic Reading Counts** — quiz-based comprehension verification tied to reading levels; widely used but frequently critiqued (per library-blog commentary found in research) as anxiety-inducing rather than joy-of-reading-oriented; paid, no social/family layer. ([Alternatives to AR discussion](https://www.stayingcoolinthelibrary.us/alternatives-to-accelerated-reader/))
+- **Smaller players** (Prodigy, Page Pots, SpoonRead) — game-first or simple personal trackers; none combine multi-tenant grade/class structure with role-based access, family continuity, and genuine free pricing. ([Jotform gamification roundup](https://www.jotform.com/blog/gamification-apps-for-education/))
+
+### 7.2 Consolidated gaps Bookie can fill
+1. **One continuous identity across home, community club, and school.** Every competitor above is single-context (school-only or library-only or home-only); a child's home reading and school reading live in disconnected apps today. Bookie already has family + local club in one profile — extending to school in the *same* profile/history is structurally unique in this set.
+2. **Genuinely free at every tier, including schools.** Every competitor with meaningful school features monetizes the institution (subscription, per-seat, or licensed-content paywall). Bookie's landing-page promise, honored into the school tier, is a real differentiator and should be treated as a headline feature of the School journey's own marketing, not just an engineering constraint.
+3. **POPIA-native, not COPPA-retrofitted.** No competitor found frames its privacy model around POPIA; Bookie already does for families and can extend the same posture to schools, which is directly relevant in its South African market.
+4. **Book-agnostic, not content-licensed.** Epic and Sora both funnel users into their own licensed libraries. Bookie logs *any* book (ISBN scan/search), physical or digital — a school flow should preserve this rather than becoming a content platform.
+5. **Trust-first tone as a deliberate alternative to verification-heavy tools.** Accelerated Reader's quiz model is explicitly critiqued in the research as pressure-inducing. Bookie's warm, family-first milestone copy (§5.1) is a real point of difference worth preserving deliberately if a school feature is added, rather than defaulting to a verification mechanic just because competitors have one (see open question 5.3.1).
+
+### 7.3 POPIA implication carried over from Feature 2 — resolved
+
+**Decision (2026-09-20, per product owner):** Bookie already gates all child data behind an adult account holder — a child profile is a `family_members` row with no login of its own, and the Privacy Policy already states "the adult account holder is responsible for all data entered on behalf of a child and consents to this policy on the child's behalf" (`PrivacyPage.tsx` §3). Bookie also already has the mechanism for a child to eventually take over their own profile once ready: the `claim_child_member` RPC, invoked from a targeted invite token (`src/pages/InvitePage.tsx:123-134`) — the parent-created profile gets a `user_id` attached and the child gains their own login, no data migration needed.
+
+**Ruling: School does not introduce a new lawful-processing scenario.** A student's profile inside a school club/class remains the same parent-managed `family_members` row as everywhere else in the app — the parent/guardian stays the consenting, verifying, and authorizing party for as long as the student is a minor, exactly as today's family and community-club flows already work. This means:
+- A teacher/school admin can never create a standalone "student" record disconnected from a family account — joining a school class must route through the same account-holder consent chain as `ClubInvitePage.tsx` today (an adult creates/links the account; the child profile is then added to the class).
+- The existing `claim_child_member` "hand over when ready" mechanism is reused as-is for School — no new handover flow needs to be designed.
+- Research below (POPIA's "competent person" consent requirement, Sections 34–35) is already satisfied by this existing chain; it does not create additional design work, only confirms the existing model was correct to begin with. ([Mondaq: Back to School POPIA Do's and Don'ts](https://www.mondaq.com/southafrica/data-protection/1426596/back-to-school-popia-dos-and-donts), [POPIA Compliance for Schools guide](https://www.myencore.co.za/news/popia-compliance-schools.html))
+
+**Remaining (non-blocking) item:** whether the Privacy Policy needs a short School-context addendum (e.g. naming the school as an additional party that can see a student's class reading progress) — a documentation/legal-copy task, not a data-model or consent-flow change.
+
+---
+
+## 8. Business model constraint: Free Forever
+
+This is a **product constraint carried into every feature above**, not a separate initiative:
+- No pricing page, seat licensing, or "contact sales for schools" flow should be designed as part of the School feature — every competitor researched charges at that tier; Bookie explicitly does not.
+- Any gamification or sharing mechanic (badges, challenges, share cards) must not gate core functionality behind payment — matching the existing "no ads, no fees, ever" copy.
+- Sustainability of this model at school scale (support load, moderation load, infrastructure cost as usage grows) is a real open question but is a **business/ops decision, not something to solve by quietly introducing monetization into the design** — flag it explicitly to the user rather than assuming a workaround.
+
+---
+
+## 9. Cross-cutting requirement: mobile-first
+
+All of the above (reader book list, School creation journey, gamification surfaces, sharing/invite flows) must be designed mobile-first, following the app's existing pattern of bottom sheets and single-column stacks with `lg:` breakpoints as progressive desktop enhancement, not the reverse.
+
+---
+
+## 10. Next steps (follow-up session agenda)
+1. Resolve remaining open questions in §3.3, §4.4 (#1, #4-6), §5.3, §6.4.
+2. Decide the School data model (new top-level entity vs. nested-groups-on-a-club) before any schema migration — now constrained by §7.3: students are always parent-linked `family_members` rows, so the model must plug into the existing family/club membership tables rather than a parallel student table.
+3. Decide the gamification mechanic set (streaks/badges/challenges/leaderboards) and whether reading-verification is in scope at all.
+4. Decide the school link/invite mechanism (scoped tokens vs. short join codes vs. bulk CSV) building on the existing `invite_token` pattern, per the resolved consent chain in §7.3 (link must resolve through an adult account holder, never straight to a bare student record).
+5. Optional: draft a short School-context addendum to the Privacy Policy (§7.3 remaining item) — copy task, not a design blocker.
+6. Wireframe "Create new club → School" once the above is settled.
+
+---
+
+## 11. Appendix — key file references
 - Reader profile / "+N more": `src/components/ReaderProfileSheet.tsx:309-341`
-- Full book list (family-wide, self-scoped only today): `src/pages/BooksPage.tsx`
+- Full book list (self-scoped only today): `src/pages/BooksPage.tsx`
 - Club creation form: `src/pages/ClubsPage.tsx:267-413`
 - Club detail (tabs, groups, reports, roles, moderation): `src/pages/ClubDetailPage.tsx`
+- Family invite flow: `src/pages/InvitePage.tsx`
 - Club invite flow: `src/pages/ClubInvitePage.tsx`
+- Gamification: `src/lib/milestones.ts`, `src/components/MilestoneModal.tsx`, `src/components/ReaderProfileSheet.tsx:11-30`
+- Sharing: `src/lib/shareCard.ts`, `src/components/ShareSheet.tsx`
+- Landing page brand promise: `src/pages/LandingPage.tsx:67,286,312`
 - Types: `src/lib/types.ts`
 - DB schema: `supabase/schema.sql`, `clubs_schema.sql`, `clubs_schema_v2.sql`, `clubs_schema_patch.sql`, `topics_schema*.sql`, `moderation_schema.sql`
 - Admin/permissions: `src/lib/admin.ts`, `src/pages/AdminDashboard.tsx`
 - Privacy/Terms: `src/pages/PrivacyPage.tsx`, `src/pages/TermsPage.tsx`
 - Auth/member model: `src/contexts/AuthContext.tsx`
-- Sharing: `src/lib/shareCard.ts`, `src/components/ShareSheet.tsx`
