@@ -13,43 +13,104 @@ export interface FamilyMember {
   nickname: string;
   avatar_emoji: string;
   is_child: boolean;
+  /** @deprecated Use immersion_enabled instead. Will be removed after migration. */
   is_child_mode: boolean;
+  /** Replaces is_child_mode. Controls Immersion mode per profile (PRD §5.2). */
+  immersion_enabled: boolean | null;
   color: string;
   gender: string | null;
   age_group: string | null;
   created_at: string;
 }
 
+// ── PRD v0.3 age group bands (§2.2) ──────────────────────────────────────────
+// Named tiers for the new immersion mode and age-adaptive UI.
+// Legacy values '10-15' and '16-21' are kept for backward compat until migration.
 export const AGE_GROUPS = [
-  "0-2", "3-5", "6-9", "10-15", "16-21", "22-35", "36-65", "66+", "prefer_not_to_say",
+  "0-2",            // Little ones
+  "3-5",            // Explorers
+  "6-9",            // Adventurers
+  "10-12",          // Navigators  (NEW — split from old '10-15')
+  "13-17",          // Travellers  (NEW — merges old upper '10-15' + '16-21')
+  "18-21",          // Adults (sub-band)
+  "22-35",          // Adults (sub-band)
+  "36-65",          // Adults (sub-band)
+  "66+",            // Adults (sub-band)
+  "prefer_not_to_say",
+  // Legacy — kept so existing rows don't break; resolved as 'needs-review'
+  "10-15",
+  "16-21",
 ] as const;
 
 export type AgeGroup = (typeof AGE_GROUPS)[number];
 
+// Display labels — shown in profile pickers and settings
 export const AGE_GROUP_LABELS: Record<string, string> = {
-  "0-2": "0–2",
-  "3-5": "3–5",
-  "6-9": "6–9",
-  "10-15": "10–15",
-  "16-21": "16–21",
-  "22-35": "22–35",
-  "36-65": "36–65",
-  "66+": "66+",
+  "0-2":             "0–2 (Little ones)",
+  "3-5":             "3–5 (Explorers)",
+  "6-9":             "6–9 (Adventurers)",
+  "10-12":           "10–12 (Navigators)",
+  "13-17":           "13–17 (Travellers)",
+  "18-21":           "18–21",
+  "22-35":           "22–35",
+  "36-65":           "36–65",
+  "66+":             "66+",
   "prefer_not_to_say": "Prefer not to say",
+  // Legacy labels for existing records awaiting parent review
+  "10-15":           "10–15 (please update)",
+  "16-21":           "16–21 (please update)",
 };
 
+// Picker-visible groups only (excludes legacy and prefer_not_to_say from the main picker)
+export const AGE_GROUPS_PICKER = [
+  "0-2", "3-5", "6-9", "10-12", "13-17", "18-21", "22-35", "36-65", "66+", "prefer_not_to_say",
+] as const;
+
+// Per-tier immersion defaults (PRD §5.2)
+export const IMMERSION_DEFAULT: Record<string, boolean> = {
+  "0-2":   false,  // Little ones — later phase, parent-operated
+  "3-5":   true,   // Explorers — on by default
+  "6-9":   true,   // Adventurers — on by default
+  "10-12": true,   // Navigators — on by default
+  "13-17": false,  // Travellers — offered but off
+  "18-21": false,
+  "22-35": false,
+  "36-65": false,
+  "66+":   false,
+  "prefer_not_to_say": false,
+};
+
+// Named tier labels used in Immersion mode and age-adaptive UI
+export const AGE_TIER_NAMES: Record<string, string> = {
+  "0-2":   "Little ones",
+  "3-5":   "Explorers",
+  "6-9":   "Adventurers",
+  "10-12": "Navigators",
+  "13-17": "Travellers",
+};
+
+// Accent colours per tier (used in avatars, badges, cards)
 export const AGE_GROUP_COLORS: Record<string, string> = {
-  "0-2": "#F4A0B0",
-  "3-5": "#F4A562",
-  "6-9": "#F2C94C",
-  "10-15": "#6BBEA0",
-  "16-21": "#4EA8C8",
+  "0-2":   "#F4A0B0",  // soft pink
+  "3-5":   "#F4A562",  // warm orange — Explorers
+  "6-9":   "#F2C94C",  // golden — Adventurers
+  "10-12": "#6BBEA0",  // teal — Navigators
+  "13-17": "#4EA8C8",  // sky blue — Travellers
+  "18-21": "#5B8EDA",
   "22-35": "#5B8EDA",
   "36-65": "#7C6BD6",
-  "66+": "#C47AC8",
+  "66+":   "#C47AC8",
   "prefer_not_to_say": "#9AA5B4",
+  // Legacy
+  "10-15": "#6BBEA0",
+  "16-21": "#4EA8C8",
   "Unknown": "#CBD5E0",
 };
+
+// Returns true if this age_group needs a parent review (legacy band)
+export function ageGroupNeedsReview(ageGroup: string | null): boolean {
+  return ageGroup === "10-15" || ageGroup === "16-21";
+}
 
 export interface Invite {
   id: string;

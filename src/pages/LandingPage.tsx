@@ -64,7 +64,7 @@ export default function LandingPage() {
                 Sign in
               </button>
             </div>
-            <p className="text-xs text-muted-foreground mt-4">100% free · No fees · No ads · No catch · Ever</p>
+            <p className="text-xs text-muted-foreground mt-4">Free to use · Always · Children never see ads</p>
           </div>
 
           {/* Hero illustration */}
@@ -283,7 +283,7 @@ export default function LandingPage() {
           <span className="text-6xl block mb-6">📚</span>
           <h2 className="font-display text-4xl font-bold mb-4">Ready to start your family library?</h2>
           <p className="text-muted-foreground text-lg mb-2">Join hundreds of families already reading together.</p>
-          <p className="text-sm text-muted-foreground mb-8">No subscription. No ads. No fees. Just books.</p>
+          <p className="text-sm text-muted-foreground mb-8">Free to use. Always. No subscription, no fees. Children never see ads.</p>
           <button
             onClick={() => navigate("/auth?mode=signup")}
             className="inline-flex items-center gap-2 px-8 py-4 rounded-2xl bg-primary text-primary-foreground font-bold text-lg hover:opacity-90 transition-all shadow-lg shadow-primary/25"
@@ -309,24 +309,22 @@ export default function LandingPage() {
             </nav>
           </div>
           <div className="mt-6 pt-6 border-t border-border text-center text-xs text-muted-foreground">
-            <p>© {new Date().getFullYear()} Bookie. A family app, by a family, for families. Free forever.</p>
-            <p className="mt-1">Built with ❤️ in Cape Town, South Africa 🇿🇦 · POPIA compliant</p>
+            <p>© {new Date().getFullYear()} Bookie. A family app, by a family, for families.</p>
+            <p className="mt-1">
+              Made by{" "}
+              <a
+                href="https://signalux.co.za"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-semibold text-primary hover:underline"
+              >
+                Signal UX
+              </a>
+              {" "}· Built with ❤️ in Cape Town, South Africa 🇿🇦 · POPIA compliant
+            </p>
           </div>
         </div>
       </footer>
-
-      <style>{`
-        @keyframes float {
-          0%, 100% { transform: translateY(0px) rotate(3deg); }
-          50% { transform: translateY(-8px) rotate(3deg); }
-        }
-        @keyframes float-slow {
-          0%, 100% { transform: translateY(0px) rotate(-4deg); }
-          50% { transform: translateY(-6px) rotate(-4deg); }
-        }
-        .animate-float { animation: float 3s ease-in-out infinite; }
-        .animate-float-slow { animation: float-slow 4s ease-in-out infinite; }
-      `}</style>
     </div>
   );
 }

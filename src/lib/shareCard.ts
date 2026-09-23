@@ -3,7 +3,7 @@
  * Produces PNG blobs that can be passed to navigator.share({ files }).
  */
 
-export const APP_URL = "https://bookie-seven-pi.vercel.app";
+export const APP_URL = import.meta.env.VITE_APP_URL ?? "https://bookie-seven-pi.vercel.app";
 
 const C = {
   cream: "#FAF6EF",

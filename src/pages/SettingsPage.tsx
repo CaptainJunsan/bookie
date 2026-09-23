@@ -7,7 +7,7 @@ import {
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../contexts/AuthContext";
 import EmojiPicker from "../components/EmojiPicker";
-import { MEMBER_COLORS, CHILD_ROLES, PARENT_ROLES, genderFromRole, AGE_GROUPS, AGE_GROUP_LABELS, AGE_GROUP_COLORS } from "../lib/types";
+import { MEMBER_COLORS, CHILD_ROLES, PARENT_ROLES, genderFromRole, AGE_GROUPS, AGE_GROUPS_PICKER, AGE_GROUP_LABELS, AGE_GROUP_COLORS, ageGroupNeedsReview } from "../lib/types";
 import type { Invite, FamilyMember } from "../lib/types";
 import { toast } from "sonner";
 import {
@@ -112,7 +112,8 @@ export default function SettingsPage() {
     setEditChildRole(m.role);
     setEditChildGender(m.gender || "");
     setEditChildAvatar(m.avatar_emoji);
-    setEditChildMode(m.is_child_mode ?? false);
+    // immersion_enabled is the new field; fall back to is_child_mode until migration runs
+    setEditChildMode(m.immersion_enabled ?? m.is_child_mode ?? false);
     setEditChildAgeGroup(m.age_group || "");
     setGrantingLoginFor(null);
     setChildLoginEmail("");
@@ -126,7 +127,8 @@ export default function SettingsPage() {
       role: editChildRole,
       gender: editChildGender || null,
       avatar_emoji: editChildAvatar,
-      is_child_mode: editChildMode,
+      is_child_mode: editChildMode,        // kept until DB migration drops column
+      immersion_enabled: editChildMode,    // new canonical field
       age_group: editChildAgeGroup || null,
     }).eq("id", editingChildId);
     if (error) { toast.error("Could not save"); setSavingEditChild(false); return; }
@@ -302,16 +304,31 @@ export default function SettingsPage() {
     <div className="max-w-2xl lg:max-w-2xl mx-auto px-4 lg:px-8 py-6 pb-24 lg:pb-10 space-y-6">
       <h1 className="font-display text-2xl font-bold">Settings</h1>
 
-      {/* Age group notification banner */}
+      {/* Age group notification banner — missing age */}
       {showAgeNotice && (
         <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 flex items-start gap-3">
           <span className="text-xl mt-0.5 flex-shrink-0">📊</span>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-bold text-amber-800">Set age groups for your readers</p>
             <p className="text-xs text-amber-700 mt-0.5">
-              Help us understand our audience —{" "}
+              Help us personalise the experience —{" "}
               {membersWithoutAgeGroup.map((m) => m.nickname).join(", ")}{" "}
               {membersWithoutAgeGroup.length === 1 ? "needs" : "need"} an age group. Edit each profile below to set it.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Age group review banner — legacy bands that need updating */}
+      {allMembers.some((m) => ageGroupNeedsReview(m.age_group)) && (
+        <div className="bg-highlight/10 border border-highlight/30 rounded-2xl p-3 flex items-start gap-3">
+          <span className="text-xl mt-0.5 flex-shrink-0">🔄</span>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-bold text-foreground">Age groups have been updated</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              We've introduced new age tiers (Explorers, Adventurers, Navigators, Travellers).
+              Please update the age group for:{" "}
+              {allMembers.filter((m) => ageGroupNeedsReview(m.age_group)).map((m) => m.nickname).join(", ")}.
             </p>
           </div>
         </div>
@@ -382,7 +399,7 @@ export default function SettingsPage() {
             <div>
               <label className="block text-xs font-semibold mb-2 text-muted-foreground uppercase tracking-wide">Age Group</label>
               <div className="flex flex-wrap gap-1.5">
-                {[...AGE_GROUPS].map((ag) => {
+                {[...AGE_GROUPS_PICKER].map((ag) => {
                   const selected = editAgeGroup === ag;
                   const color = AGE_GROUP_COLORS[ag];
                   return (
@@ -436,7 +453,7 @@ export default function SettingsPage() {
                   <p className="font-semibold text-sm truncate">
                     {m.nickname}
                     {isMe && <span className="ml-1.5 text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full font-bold">you</span>}
-                    {m.is_child_mode && <span className="ml-1.5 text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full font-bold">child mode</span>}
+                    {(m.immersion_enabled ?? m.is_child_mode) && <span className="ml-1.5 text-[10px] bg-highlight/10 text-highlight px-1.5 py-0.5 rounded-full font-bold">🗺️ Immersion</span>}
                   </p>
                   <p className="text-xs text-muted-foreground">
                     {m.role}
