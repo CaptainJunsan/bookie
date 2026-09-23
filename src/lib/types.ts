@@ -339,3 +339,75 @@ export interface ClubCommentBlock {
   member_id: string;
   blocked_at: string;
 }
+
+// ── Schools (PRD §10) ────────────────────────────────────────────────────────
+// A school is its own top-level entity, distinct from Reading Clubs — see
+// PRD.md §10.2. Grades contain classes; classes contain learners.
+
+export type SchoolRole = "admin" | "teacher";
+
+export interface School {
+  id: string;
+  name: string;
+  description: string | null;
+  emoji: string;
+  city: string | null;
+  suburb: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+export interface SchoolMember {
+  id: string;
+  school_id: string;
+  family_member_id: string;
+  role: SchoolRole;
+  class_id: string | null; // set when a teacher is scoped to one class; null for admins
+  created_at: string;
+  // joined via query
+  family_member?: FamilyMember;
+}
+
+export interface Grade {
+  id: string;
+  school_id: string;
+  name: string;
+  order_index: number;
+  created_at: string;
+}
+
+export interface SchoolClass {
+  id: string;
+  grade_id: string;
+  school_id: string;
+  name: string;
+  join_code: string;
+  created_at: string;
+}
+
+export interface ClassLearner {
+  id: string;
+  class_id: string;
+  school_id: string;
+  family_member_id: string | null; // null until claimed (school-created) or always set (linked)
+  nickname: string;
+  avatar_emoji: string;
+  is_school_created: boolean;
+  handover_code: string | null;
+  handover_code_expires_at: string | null;
+  claimed_at: string | null;
+  added_by: string | null;
+  created_at: string;
+}
+
+export interface SchoolStaffInvite {
+  id: string;
+  school_id: string;
+  role: SchoolRole;
+  class_id: string | null;
+  code: string;
+  invited_by: string | null;
+  expires_at: string;
+  accepted_at: string | null;
+  created_at: string;
+}

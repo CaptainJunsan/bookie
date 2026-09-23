@@ -69,23 +69,34 @@ export default function ExplorePage() {
         </button>
       </div>
 
-      {/* ── School placeholder (Phase 6) ── */}
+      {/* ── School ── */}
       <section>
         <h2 className="font-display font-bold text-lg mb-3 flex items-center gap-2">
           <span className="text-xl">🎓</span> School
         </h2>
-        <div className="rounded-2xl border-2 border-dashed border-border p-6 text-center">
-          <p className="text-4xl mb-3">🏫</p>
-          <p className="font-semibold text-sm text-foreground mb-1">Join a school reading club</p>
-          <p className="text-xs text-muted-foreground mb-4">
-            Has your school set up Bookie? Enter the class join code your teacher shared.
-          </p>
-          <button
-            onClick={() => navigate("/join")}
-            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-school text-school-foreground font-bold text-sm hover:opacity-90 transition-opacity"
-          >
-            Enter class code
-          </button>
+        <div className="rounded-2xl border-2 border-dashed border-border p-6 text-center space-y-4">
+          <div>
+            <p className="text-4xl mb-3">🏫</p>
+            <p className="font-semibold text-sm text-foreground mb-1">Join a school reading club</p>
+            <p className="text-xs text-muted-foreground mb-4">
+              Has your school set up Bookie? Enter the class join code your teacher shared.
+            </p>
+            <button
+              onClick={() => navigate("/join")}
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-school text-school-foreground font-bold text-sm hover:opacity-90 transition-opacity"
+            >
+              Enter class code
+            </button>
+          </div>
+          <div className="pt-3 border-t border-border">
+            <p className="text-xs text-muted-foreground mb-2">Set up or manage a school</p>
+            <button
+              onClick={() => navigate("/schools")}
+              className="text-xs font-semibold text-school hover:underline"
+            >
+              Go to Schools →
+            </button>
+          </div>
         </div>
       </section>
 

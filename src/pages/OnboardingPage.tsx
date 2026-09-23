@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router";
+import { useNavigate, useSearchParams } from "react-router";
 import { Plus, Trash2, Send, ArrowRight, ArrowLeft, Check, LogOut } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../contexts/AuthContext";
@@ -28,6 +28,8 @@ const STEPS = ["Your profile", "Family name", "Add children", "Invite family"];
 
 export default function OnboardingPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const returnTo = searchParams.get("returnTo");
   const { user, refreshFamily, signOut } = useAuth();
   const [step, setStep] = useState(0);
   const [saving, setSaving] = useState(false);
@@ -136,7 +138,7 @@ export default function OnboardingPage() {
       }
 
       await refreshFamily();
-      navigate("/dashboard");
+      navigate(returnTo && returnTo.startsWith("/") ? returnTo : "/dashboard");
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Something went wrong");
     } finally {

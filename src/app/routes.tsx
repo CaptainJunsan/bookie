@@ -11,6 +11,9 @@ import BookDetailPage from "../pages/BookDetailPage";
 import AddBookPage from "../pages/AddBookPage";
 import SearchPage from "../pages/SearchPage";
 import ExplorePage from "../pages/ExplorePage";
+import SchoolsPage from "../pages/SchoolsPage";
+import SchoolDetailPage from "../pages/SchoolDetailPage";
+import JoinPage from "../pages/JoinPage";
 import SettingsPage from "../pages/SettingsPage";
 import AdminDashboard from "../pages/AdminDashboard";
 import ClubsPage from "../pages/ClubsPage";
@@ -76,9 +79,12 @@ export const router = createBrowserRouter([
       { path: "search",               Component: SearchPage,      loader: requireAuthWithFamily },
       // New Explore tab (4th nav slot)
       { path: "explore",              Component: ExplorePage,     loader: requireAuthWithFamily },
-      // Universal class/club join code route (Phase 6 — placeholder for now)
-      { path: "join",                 Component: ExplorePage,     loader: requireAuthWithFamily },
-      { path: "join/:code",           Component: ExplorePage,     loader: requireAuthWithFamily },
+      { path: "schools",              Component: SchoolsPage,     loader: requireAuthWithFamily },
+      { path: "schools/:id",          Component: SchoolDetailPage, loader: requireAuthWithFamily },
+      // Universal join code route: class codes, handover codes, staff invites.
+      // No requireAuthWithFamily — JoinPage handles the signed-out and no-family cases itself.
+      { path: "join",                 Component: JoinPage },
+      { path: "join/:code",           Component: JoinPage },
       { path: "settings",             Component: SettingsPage,    loader: requireAuthWithFamily },
       { path: "clubs",                Component: ClubsPage,       loader: requireAuthWithFamily },
       { path: "clubs/invite/:token",  Component: ClubInvitePage },
