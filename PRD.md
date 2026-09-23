@@ -705,13 +705,12 @@ Each phase ends with something testable. Design (§5.8) runs in parallel from ph
 4. Book Dash titles published **only after the partnership is confirmed** (§7.1).
 
 **Phase 3: Schools and home-schooling pilot**
-1. Legal checks for schools completed (§14.2).
-2. Schools, grades, classes, roles (§10.2).
-3. School-created profiles and handover (§10.3).
-4. Class codes, class progress, class reading mode, reports (§10.4–§10.5).
-5. Home-schooling teacher role and exportable record (§10.6).
-6. Context-carrying class links and branded club invites (§11.2).
-7. Pilot with one or two Cape Town schools.
+1. Legal checks for schools completed (§14.2). *Runs in parallel with the rest — blocks the pilot, not the code.*
+2. ~~Schools, grades, classes, roles~~ — **done** (§10.2, built 2026-09-23, see §22).
+3. ~~School-created profiles and handover~~ — **done**, including class-join and staff-invite codes via a single `/join/:code` entry point (§10.3, §11.2, see §22).
+4. Class progress, class reading mode, reports (§10.4–§10.5) — **sliced into steps in §22.1**; start with QA'ing step 2/3 above and building `reading_sessions` (§6.2), which this depends on and doesn't exist yet.
+5. Home-schooling teacher role and exportable record (§10.6) — needs a short design decision first; see §22.1.
+6. Pilot with one or two Cape Town schools.
 
 **Phase 4: Ads and ad-free purchase**
 1. Landing page, Terms and Privacy Policy updated; users told (§12.6).
@@ -841,3 +840,19 @@ Built per §10, adopting §10.2's recommendation (a new top-level `schools` enti
 **Not yet done, worth flagging:**
 - **No browser testing was possible in this environment** (no browser automation tool available this session) — `npm run build` passes and the SQL was smoke-tested directly against production via the Supabase MCP connection, but the actual click-through flows (create school → add grade/class → add a school-created learner → claim via handover code → confirm it lands correctly in that family's Settings) have not been run end-to-end in a real browser. Recommend doing that pass before relying on this for a real school.
 - The Roster tab's "Roster →" shortcut from the Grades & Classes tab switches tabs but doesn't pre-select that specific class (lands on whichever class is first) — a minor rough edge, not a functional bug.
+
+### 22.1 Remaining Schools work, sliced
+
+§17's Phase 3 build order lists "class codes, class progress, class reading mode, reports" as one line (step 4) and "home-schooling" as another (step 5). Both are too big to build in one pass — here they're broken into pieces sized like the foundation pass above, in the order they should actually be tackled (each one assumes the ones above it are done).
+
+| # | Slice | Depends on | Notes |
+|---|---|---|---|
+| 0 | **QA the foundation** — click through create school → grade → class → school-created learner → handover claim → staff invite in a real browser; fix whatever breaks, including the Roster pre-select rough edge above. | Nothing | Blocking. Bugs here compound into everything below. |
+| 1 | **`reading_sessions` + re-reads** (PRD §6.2, listed as Phase 0 item 3 but never actually built) | Nothing | Not a Schools item at all, but §10.4's "class reading mode" and the Bookworm score's re-read counting both assume this table exists. Building Schools' reading features before this exists means redoing them once it lands — do this first. |
+| 2 | **Class books + individual progress** — `class_books` (mirrors `club_books`) and `class_reading_progress` (mirrors `club_reading_progress`, but keyed to `class_learners.id` rather than `family_members.id`, since a school-created learner may not be claimed yet). Teacher UI to add a book to a class; each learner's own progress view. | Slice 1 (progress rows should write through to `reading_sessions`, not just a page number, to avoid a second migration later) | The "individual" half of §10.4 — no bulk/class-reading-mode UI yet. |
+| 3 | **Class reading mode** — the one-device, one-tap "we read this together" bulk action for a shared classroom device, logging a session for every learner in the class at once. No ads ever on this screen (§12.2). | Slice 2 | The distinctly *classroom* half of §10.4. |
+| 4 | **Reports** (§10.5) — a `class_learner_report` RPC mirroring `club_member_report`/`club_books_report`; a Reports view scoped teacher-own-classes / admin-all-classes / parent-own-child-only, reusing `ClubDetailPage.tsx`'s CSV-export pattern. | Slices 1–3 (reports are only as good as the underlying session data) | |
+| 5 | **Home-schooling** (§10.6) — needs a design decision first, not just code: does a home-schooling parent need a `schools` row at all, or is this just curriculum/grade fields directly on the child's `family_members` row plus optional term goals? Leaning toward the latter (no class/roster mechanics apply to a home-schooling parent teaching their own kids) — worth 10 minutes of discussion before building. | Nothing (independent of 1–4) | Exportable PDF record is the other half, and only makes sense once there's real reading history to export. |
+| 6 | **Immersion-tied polish** — class landmarks appearing on the child's map (§5.3), companion celebrations for class goals (§5.7) | Immersion mode itself (PRD §17 Phase 1, not started) | Out of scope until Phase 1 ships. Don't build class-reading UI that assumes map visuals exist before then. |
+
+Legal sign-off (§14.2, POPIA basis for school-created minor profiles) runs in parallel with all of the above — it blocks the *real pilot*, not the code.
