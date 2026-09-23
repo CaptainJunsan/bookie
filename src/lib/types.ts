@@ -17,6 +17,8 @@ export interface FamilyMember {
   is_child_mode: boolean;
   /** Replaces is_child_mode. Controls Immersion mode per profile (PRD §5.2). */
   immersion_enabled: boolean | null;
+  /** Per-profile UI language: 'en' | 'af' | 'xh' (PRD §9.2). Not yet read/written by the UI. */
+  language: string;
   color: string;
   gender: string | null;
   age_group: string | null;
