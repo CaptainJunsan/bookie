@@ -333,6 +333,9 @@ export default function ReaderProfileSheet({ member, isBestReader = false, onClo
                           ))}
                         </div>
                         {stats.finishedBooks.length > 10 && (
+                          <p className="text-xs text-muted-foreground mt-2 text-center">
+                            +{stats.finishedBooks.length - 10} more
+                          </p>
                           <button
                             onClick={() => { onClose(); navigate(`/books?reader=${member!.id}`); }}
                             className="col-span-5 mt-1 py-2 rounded-xl border border-dashed border-primary/30 text-xs text-primary font-semibold hover:bg-primary/5 transition-colors"

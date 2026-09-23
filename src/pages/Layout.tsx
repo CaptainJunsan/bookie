@@ -1,4 +1,5 @@
 import { Outlet, NavLink, useLocation, useNavigate } from "react-router";
+import { BookMarked, LayoutDashboard, PlusCircle, Settings, Search, Users } from "lucide-react";
 import {
   BookMarked, LayoutDashboard, Compass, Users, Menu,
   Settings, LogOut, Share2, UserPlus, ShieldCheck, X,
@@ -20,11 +21,13 @@ export default function Layout() {
     family &&
     !isAdminRoute &&
     !["/", "/auth", "/onboarding"].includes(location.pathname) &&
+    !location.pathname.startsWith("/invite");
     !location.pathname.startsWith("/invite") &&
     !location.pathname.startsWith("/join");
 
   const missingAgeGroups = allMembers.some((m) => !m.age_group);
 
+  // Club notification dot — unseen club notifications for any family member
   // Club notification dot
   const [hasClubNotifs, setHasClubNotifs] = useState(false);
   useEffect(() => {
@@ -94,7 +97,19 @@ export default function Layout() {
 
           {/* Nav */}
           <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
+            <NavLink
+              to="/books/add"
+              className="flex items-center gap-3 w-full px-3 py-2.5 rounded-xl bg-primary text-primary-foreground font-semibold text-sm hover:opacity-90 transition-opacity mb-2"
+            >
+              <PlusCircle size={18} />
+              Add new book
+            </NavLink>
+            <div className="border-t border-border my-2" />
             <SideNavItem to="/dashboard" icon={<LayoutDashboard size={18} />} label="Home" />
+            <SideNavItem to="/books" icon={<BookMarked size={18} />} label="Library" />
+            <SideNavItem to="/search" icon={<Search size={18} />} label="Find a book" />
+            <SideNavItem to="/clubs" icon={<Users size={18} />} label="Clubs" badge={hasClubNotifs} />
+            <SideNavItem to="/settings" icon={<Settings size={18} />} label="Settings" badge={missingAgeGroups} />
             <SideNavItem to="/books"     icon={<BookMarked size={18} />}     label="Library" />
             <SideNavItem to="/clubs"     icon={<Users size={18} />}          label="Clubs" badge={hasClubNotifs} />
             <SideNavItem to="/explore"   icon={<Compass size={18} />}        label="Explore" badge={missingAgeGroups} />
@@ -133,6 +148,7 @@ export default function Layout() {
 
       {/* ── Mobile header ── */}
       {isAppRoute && (
+        <header className="sticky top-0 z-40 bg-card border-b border-border backdrop-blur-sm lg:hidden">
         <header className="sticky top-0 z-40 bg-card/95 border-b border-border backdrop-blur-sm lg:hidden">
           <div className="max-w-2xl mx-auto px-4 h-14 flex items-center justify-between">
             <button onClick={() => navigate("/dashboard")} className="flex items-center gap-2">
@@ -140,13 +156,18 @@ export default function Layout() {
               <span className="font-display font-bold text-lg text-primary tracking-tight">Bookie</span>
             </button>
             <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground font-medium">{family.name}</span>
               <span className="text-sm text-muted-foreground font-medium hidden xs:block">{family.name}</span>
               {/* Hamburger */}
               <button
+                onClick={() => navigate("/settings")}
+                className="w-8 h-8 rounded-full flex items-center justify-center text-lg bg-secondary hover:bg-muted transition-colors"
+                title={member?.nickname}
                 onClick={() => setDrawerOpen(true)}
                 className="w-9 h-9 rounded-xl flex items-center justify-center text-foreground bg-secondary hover:bg-muted transition-colors relative"
                 aria-label="Open menu"
               >
+                {member?.avatar_emoji || "👤"}
                 <Menu size={20} />
                 {/* Settings warning dot */}
                 {missingAgeGroups && (
@@ -238,8 +259,26 @@ export default function Layout() {
         <Outlet />
       </main>
 
+      {/* ── Floating Add Book button (mobile only) ── */}
+      {isAppRoute && (
+        <NavLink
+          to="/books/add"
+          className="fixed bottom-[5.5rem] right-4 z-30 w-14 h-14 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow-xl shadow-primary/35 hover:opacity-90 active:scale-95 transition-all lg:hidden"
+          aria-label="Add new book"
+        >
+          <PlusCircle size={24} />
+        </NavLink>
+      )}
+
       {/* ── Mobile bottom nav ── */}
       {isAppRoute && (
+        <nav className="sticky bottom-0 z-40 bg-card border-t border-border pb-safe lg:hidden">
+          <div className="max-w-2xl mx-auto px-2 pt-2 pb-[22px] flex items-center justify-around">
+            <NavItem to="/dashboard" icon={<LayoutDashboard size={20} />} label="Home" />
+            <NavItem to="/books" icon={<BookMarked size={20} />} label="Library" />
+            <NavItem to="/search" icon={<Search size={20} />} label="Find" />
+            <NavItem to="/clubs" icon={<Users size={20} />} label="Clubs" badge={hasClubNotifs} />
+            <NavItem to="/settings" icon={<Settings size={20} />} label="Settings" badge={missingAgeGroups} />
         <nav className="sticky bottom-0 z-40 bg-card/95 border-t border-border backdrop-blur-sm pb-safe lg:hidden">
           <div className="max-w-2xl mx-auto px-1 pt-1.5 pb-[18px] flex items-center justify-around">
             <NavItem to="/dashboard" icon={<LayoutDashboard size={22} />} label="Home" />
@@ -253,6 +292,7 @@ export default function Layout() {
   );
 }
 
+function NavItem({ to, icon, label, badge }: { to: string; icon: React.ReactNode; label: string; badge?: boolean }) {
 // ─── Nav item components ──────────────────────────────────────────────────────
 
 function NavItem({
@@ -265,19 +305,23 @@ function NavItem({
     <NavLink
       to={to}
       className={cn(
+        "flex flex-col items-center gap-0.5 px-3 py-1 rounded-xl transition-colors min-w-[52px] relative",
         "flex flex-col items-center gap-0.5 px-4 py-1.5 rounded-xl transition-all min-w-[56px] relative",
         isActive ? "text-primary" : "text-muted-foreground hover:text-foreground"
       )}
     >
+      <span className="relative">
       <span className={cn(
         "relative p-1.5 rounded-xl transition-colors",
         isActive && "bg-primary/10"
       )}>
         {icon}
         {badge && (
+          <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-amber-400 border border-card" />
           <span className="absolute top-0.5 right-0.5 w-2 h-2 rounded-full bg-amber-400 border border-card" />
         )}
       </span>
+      <span className="text-[10px] font-semibold">{label}</span>
       <span className={cn(
         "text-[10px] font-bold tracking-wide",
         isActive ? "text-primary" : "text-muted-foreground"
@@ -290,6 +334,9 @@ function NavItem({
 
 function SideNavItem({
   to, icon, label, badge,
+}: {
+  to: string; icon: React.ReactNode; label: string; badge?: boolean;
+}) {
 }: { to: string; icon: React.ReactNode; label: string; badge?: boolean }) {
   const location = useLocation();
   const isActive = location.pathname === to || location.pathname.startsWith(to + "/");
