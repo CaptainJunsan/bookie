@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router";
 import {
-  Plus, X, Loader2, MapPin, ChevronRight, GraduationCap, ShieldCheck, BookOpen,
+  Plus, X, Loader2, MapPin, ChevronRight, GraduationCap, ShieldCheck, BookOpen, Home,
 } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../contexts/AuthContext";
@@ -16,8 +16,17 @@ interface SchoolWithMeta extends School {
 }
 
 export default function SchoolsPage() {
-  const { member, allMembers } = useAuth();
+  const { member, allMembers, refreshFamily } = useAuth();
   const navigate = useNavigate();
+  const [nudgeDismissed, setNudgeDismissed] = useState(false);
+
+  async function dismissHomeschoolNudge() {
+    setNudgeDismissed(true);
+    if (member) {
+      await supabase.from("family_members").update({ homeschool_nudge_dismissed: true }).eq("id", member.id);
+      await refreshFamily();
+    }
+  }
 
   const [schools, setSchools] = useState<SchoolWithMeta[]>([]);
   const [loading, setLoading] = useState(true);
@@ -120,6 +129,28 @@ export default function SchoolsPage() {
             New school
           </button>
         </div>
+
+        {member && !member.homeschool_nudge_dismissed && !nudgeDismissed && (
+          <div className="flex items-start gap-3 p-4 mb-6 bg-school/5 border border-school/20 rounded-2xl">
+            <Home size={18} className="text-school shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-foreground">
+                {member.homeschool_journey_started_at ? "Continue setting up your homeschool" : "Homeschooling?"}
+              </p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {member.homeschool_journey_started_at
+                  ? "Pick up where you left off — no need to register a school."
+                  : "You probably don't need to register a school — a Reading Club is a faster fit and needs no approval."}
+              </p>
+              <button onClick={() => navigate("/homeschool")} className="text-xs font-bold text-school mt-1.5 hover:underline">
+                {member.homeschool_journey_started_at ? "Continue →" : "Learn how →"}
+              </button>
+            </div>
+            <button onClick={dismissHomeschoolNudge} className="text-muted-foreground hover:text-foreground shrink-0">
+              <X size={16} />
+            </button>
+          </div>
+        )}
 
         {loading ? (
           <div className="flex items-center justify-center py-20">

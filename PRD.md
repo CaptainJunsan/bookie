@@ -503,9 +503,27 @@ Make Bookie work for South African **state schools** and **home-schooling parent
 - Term planning: reading goals per term (optional, following §6.3).
 - **Exportable reading record** (PDF) per child per term or year, for the learning portfolio many home-schoolers keep.
 
+**Decided 2026-09-23 (§22.1 slice 5):** "no school needed" is now concrete, not just a principle — a homeschooling parent is pointed at an **Educational Reading Club** (already built, no approval wait) rather than the Schools entity, which is genuinely the wrong tool for one family teaching their own kids (no separate staff, no approval-worthy institution to verify). The school-registration entry points (`RegisterSchoolPage.tsx`, the in-app "Create School" flow) now link to a short in-app guide (`HomeschoolGuidePage.tsx`, route `/homeschool`) walking through: create a club → choose Educational → add a reading group per child → start logging books. Clicking through tags the parent's profile (`family_members.homeschool_journey_started_at`) so the nudge can say "continue" instead of repeating the pitch, and a dismiss is permanent (`homeschool_nudge_dismissed`) — see §22.2. The exportable PDF record is still not built (still needs real reading history to export, per §22.1's original note).
+
 ### 10.7 Carried from v0.2
 - A school class link opened by a family that already has a child profile lets the parent link that profile (§10.3 route 1).
 - Keep today's club features for school classes? **Decision:** no open discussion threads for school classes in the MVP.
+
+### 10.8 School registration & super-admin approval
+
+**Added 2026-09-23**, prompted by a real gap: a school's applicant (a teacher or principal) may not be an existing Bookie user and may not want to commit to creating an account just to ask about registering their school.
+
+**No account required to apply.** A public form (`/register-school`, linked from the sign-in page and from the in-app "Create School" flow) collects: the applicant's name, role (Principal/Deputy Principal/Teacher/School Administrator/Other), email, phone (optional), the school's name, an optional EMIS/official registration number, location, and a POPIA declaration checkbox. No password, no login. The application is stored as a `schools` row with `status = 'pending'`.
+
+**Every school is pending until a super admin approves it — however it was created.** The already-authenticated in-app "Create School" flow (an existing Bookie parent setting one up) still gets them an immediate `school_members` admin row, same as before, but the school itself sits in "pending" (a banner explains this, and grade/class/staff-invite creation is blocked, enforced in RLS via `get_my_approved_admin_school_ids()` — not just hidden in the UI) until approved. One consistent trust model, since schools handle children's data regardless of who set them up.
+
+**Approval → magic-link claim, no email infrastructure needed.** A super admin reviews pending applications in a new AdminDashboard "Schools" tab. Approving generates a short `admin_claim_code` and calls `supabase.auth.signInWithOtp()` targeting the applicant's email with `emailRedirectTo` pointing at `/join/<code>` — reusing Supabase's built-in magic-link email, not a custom email service. Clicking the email link signs the applicant in (creating their auth user if they're new) and lands them on the universal `/join/:code` resolver, which now has a fourth branch: activating a `claim_school_admin()` RPC that creates their family (if they don't have one yet — unlike `claim_class_learner`, which requires an existing family) and attaches them as the school's admin. Rejecting records an optional reason, shown to the applicant if they check back.
+
+**Super admins can also register a school directly**, skipping the review queue entirely (e.g. after verifying a school by phone) — same form, immediately `status = 'approved'`, immediate magic-link email.
+
+**Explicitly temporary.** This whole flow — public form, manual super-admin review, EMIS number as the only real verification signal — is a stopgap until a more automated verification method exists (e.g. checking against an official schools database, or a partnership with a education department). Framed that way to Janico when this was built; revisit once volume makes manual review impractical.
+
+**Not yet done:** no email is sent on *rejection* (only approval uses `signInWithOtp`, and there's no applicant-facing rejection notice beyond what they'd see if they returned to check — there's currently no "check my application status" page for someone without an account). No re-application flow if rejected. Both are reasonable follow-ups once real applications start coming in.
 
 ---
 
@@ -556,6 +574,8 @@ Ads cover running costs. Using Bookie is always free. Ads are secondary to every
 - **Direct sponsors first:** local bookstores, publishers, library events, stationery and education brands. Every ad is approved by Signal UX before it goes live.
 - Ad networks only later, only if they can guarantee no tracking and no personalisation, and only after a privacy review.
 - An admin tool to add, schedule, approve and remove sponsor ads.
+
+**Idea, parked for later (added 2026-09-23):** bookstores as a partnership channel beyond just buying an ad slot — a two-way marketing arrangement, not just a sponsor. A bookstore hands out printed Bookie bookmarks (free distribution/word-of-mouth for Bookie, no ad spend from us) and, in exchange, gets to run its own reading challenges on Bookie (e.g. "read 5 books this holiday, get 10% off your next visit") using the challenge mechanic from §6.4 — giving the bookstore visibility and a reason to keep the bookmarks in circulation. Not scoped or designed yet — needs its own pass once challenges (§6.4) exist to hang it on, but worth keeping in view since it's a genuinely free-to-Bookie growth channel that fits the "free forever" principle (§1.4) better than paid ad networks do.
 
 ### 12.5 R49 ad-free purchase
 **Copy**
@@ -856,3 +876,16 @@ Built per §10, adopting §10.2's recommendation (a new top-level `schools` enti
 | 6 | **Immersion-tied polish** — class landmarks appearing on the child's map (§5.3), companion celebrations for class goals (§5.7) | Immersion mode itself (PRD §17 Phase 1, not started) | Out of scope until Phase 1 ships. Don't build class-reading UI that assumes map visuals exist before then. |
 
 Legal sign-off (§14.2, POPIA basis for school-created minor profiles) runs in parallel with all of the above — it blocks the *real pilot*, not the code.
+
+### 22.2 Session log — Registration, approval, and the homeschool nudge (2026-09-23)
+
+Built same day as the foundation pass above, prompted directly by Janico: a school's applicant may not be an existing user and shouldn't have to commit to an account just to apply. Full design is in §10.8 (registration/approval) and §10.6 (homeschool nudge) — this is the implementation record.
+
+**Schema** (`supabase/schools_schema_v2.sql` + `supabase/homeschool_nudge_schema.sql`, applied to production as three migrations — `school_registration_approval`, `homeschool_nudge_tags`, plus the RLS/RPC additions folded into the first): `schools` gained `status`/`applicant_*`/`registration_number`/`popia_attested_at`/`reviewed_*`/`rejection_reason`/`admin_claim_code`; `get_my_approved_admin_school_ids()` now gates grade/class/staff-invite creation on approval; `get_school_claim_preview()`/`claim_school_admin()` drive the magic-link claim (the latter is the one RPC in this feature set that creates a family from scratch, since a brand-new magic-link sign-in has none yet). `family_members` gained `homeschool_journey_started_at`/`homeschool_nudge_dismissed` for the nudge tag.
+
+**UI:** `RegisterSchoolPage.tsx` (`/register-school`, public) — the POPIA-declaration form, linked from `AuthPage.tsx`'s sign-in screen and from a new "Register a school" button in `AdminDashboard.tsx`'s new **Schools** tab (super-admin only), which also lists pending applications with Approve/Reject and a reviewed-applications history. `SchoolDetailPage.tsx` shows a pending/rejected status banner and disables grade/class/staff-invite actions (`isAdmin` passed down as `isAdmin && status === "approved"`) until approved. `JoinPage.tsx` gained the fourth code-resolution branch for school-admin claims. `HomeschoolGuidePage.tsx` (`/homeschool`, public) is the tutorial the nudge and both registration entry points link to; `ClubsPage.tsx` gained a `?create=1` param so the guide's "Create your club now" button lands straight in the create sheet, already defaulted to the Educational club type.
+
+**Not yet done, worth flagging:**
+- No browser testing was possible in this environment (same limitation as the foundation pass) — the magic-link email path (`signInWithOtp`) in particular has not been confirmed end-to-end against a real inbox.
+- No applicant-facing rejection notice or re-application flow (see §10.8's closing note).
+- The homeschool nudge only appears on `SchoolsPage.tsx` — not yet on `RegisterSchoolPage.tsx` beyond the one static link line, and not on the in-app "Create School" sheet itself (a parent could still click straight through without seeing it if they land on `/schools` and immediately tap "New school" without reading the banner above it).

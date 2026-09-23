@@ -22,7 +22,9 @@ export default function Layout() {
     !isAdminRoute &&
     !["/", "/auth", "/onboarding"].includes(location.pathname) &&
     !location.pathname.startsWith("/invite") &&
-    !location.pathname.startsWith("/join");
+    !location.pathname.startsWith("/join") &&
+    !location.pathname.startsWith("/register-school") &&
+    !location.pathname.startsWith("/homeschool");
 
   // Show badge if any member is missing an age group OR has a legacy band needing review
   const missingAgeGroups =

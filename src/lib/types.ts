@@ -19,6 +19,10 @@ export interface FamilyMember {
   immersion_enabled: boolean | null;
   /** Per-profile UI language: 'en' | 'af' | 'xh' (PRD §9.2). Not yet read/written by the UI. */
   language: string;
+  // Homeschooling nudge tag (PRD §22.1 slice 5) — set when this member starts
+  // the "set up a Reading Club instead" journey from the school-registration step.
+  homeschool_journey_started_at: string | null;
+  homeschool_nudge_dismissed: boolean;
   color: string;
   gender: string | null;
   age_group: string | null;
@@ -346,6 +350,8 @@ export interface ClubCommentBlock {
 
 export type SchoolRole = "admin" | "teacher";
 
+export type SchoolStatus = "pending" | "approved" | "rejected";
+
 export interface School {
   id: string;
   name: string;
@@ -355,7 +361,22 @@ export interface School {
   suburb: string | null;
   created_by: string | null;
   created_at: string;
+  status: SchoolStatus;
+  applicant_name: string | null;
+  applicant_role: string | null;
+  applicant_email: string | null;
+  applicant_phone: string | null;
+  registration_number: string | null;
+  popia_attested_at: string | null;
+  reviewed_at: string | null;
+  reviewed_by: string | null;
+  rejection_reason: string | null;
+  admin_claim_code: string | null;
 }
+
+export const SCHOOL_APPLICANT_ROLES = [
+  "Principal", "Deputy Principal", "Teacher", "School Administrator", "Other",
+];
 
 export interface SchoolMember {
   id: string;

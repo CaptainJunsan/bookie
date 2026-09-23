@@ -11,8 +11,9 @@ import { toast } from "sonner";
 type ClassPreview = { class_id: string; class_name: string; grade_name: string; school_id: string; school_name: string };
 type HandoverPreview = { nickname: string; avatar_emoji: string; school_name: string; class_name: string };
 type StaffPreview = { school_name: string; role: string; class_name: string | null };
+type SchoolClaimPreview = { school_name: string; applicant_name: string | null };
 
-type Mode = "loading" | "enter-code" | "invalid" | "account" | "class-join" | "handover" | "staff-invite" | "done";
+type Mode = "loading" | "enter-code" | "invalid" | "account" | "class-join" | "handover" | "staff-invite" | "school-claim" | "done";
 
 export default function JoinPage() {
   const { code } = useParams<{ code: string }>();
@@ -24,6 +25,7 @@ export default function JoinPage() {
   const [classPreview, setClassPreview] = useState<ClassPreview | null>(null);
   const [handoverPreview, setHandoverPreview] = useState<HandoverPreview | null>(null);
   const [staffPreview, setStaffPreview] = useState<StaffPreview | null>(null);
+  const [schoolClaimPreview, setSchoolClaimPreview] = useState<SchoolClaimPreview | null>(null);
   const [doneMessage, setDoneMessage] = useState("");
 
   // Account step
@@ -46,26 +48,35 @@ export default function JoinPage() {
     if (!code) { setMode("enter-code"); return; }
     setMode("loading");
 
-    const [classRes, handoverRes, staffRes] = await Promise.all([
+    const [classRes, handoverRes, staffRes, schoolClaimRes] = await Promise.all([
       supabase.rpc("get_class_by_join_code", { p_code: code }),
       supabase.rpc("get_handover_preview", { p_code: code }),
       supabase.rpc("get_staff_invite_preview", { p_code: code }),
+      supabase.rpc("get_school_claim_preview", { p_code: code }),
     ]);
 
     const classRow = (classRes.data as ClassPreview[] | null)?.[0];
     const handoverRow = (handoverRes.data as HandoverPreview[] | null)?.[0];
     const staffRow = (staffRes.data as StaffPreview[] | null)?.[0];
+    const schoolClaimRow = (schoolClaimRes.data as SchoolClaimPreview[] | null)?.[0];
 
-    if (!classRow && !handoverRow && !staffRow) { setMode("invalid"); return; }
+    if (!classRow && !handoverRow && !staffRow && !schoolClaimRow) { setMode("invalid"); return; }
 
     if (!user) {
-      // Remember what we were resolving; re-run once signed in.
+      // Remember what we were resolving; re-run once signed in. School-admin
+      // claims arrive via a magic-link email, so this branch shouldn't
+      // normally apply to them, but a manually-pasted code could hit it.
       setClassPreview(classRow ?? null);
       setHandoverPreview(handoverRow ?? null);
       setStaffPreview(staffRow ?? null);
+      setSchoolClaimPreview(schoolClaimRow ?? null);
       setMode("account");
       return;
     }
+
+    // claim_school_admin() creates the caller's family itself if needed, so
+    // this branch skips the "no family yet" onboarding detour below.
+    if (schoolClaimRow) { setSchoolClaimPreview(schoolClaimRow); setMode("school-claim"); return; }
 
     if (!family) {
       // No family yet at all — send through onboarding, then bounce back here.
@@ -170,6 +181,21 @@ export default function JoinPage() {
     }
   }
 
+  async function claimSchoolAdmin() {
+    setBusy(true);
+    try {
+      const { data: schoolId, error } = await supabase.rpc("claim_school_admin", { p_code: code });
+      if (error) throw error;
+      await refreshFamily();
+      toast.success(`You're all set up as admin of ${schoolClaimPreview?.school_name}!`);
+      navigate(`/schools/${schoolId}`);
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Could not activate your school access");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const myChildren = allMembers.filter((m) => m.is_child) as FamilyMember[];
 
   if (mode === "loading") {
@@ -242,6 +268,7 @@ export default function JoinPage() {
                   {classPreview && `You're joining ${classPreview.grade_name} · ${classPreview.class_name} at ${classPreview.school_name}.`}
                   {handoverPreview && `You're claiming ${handoverPreview.nickname}'s profile from ${handoverPreview.school_name}.`}
                   {staffPreview && `You've been invited to join ${staffPreview.school_name}.`}
+                  {schoolClaimPreview && `Your school, ${schoolClaimPreview.school_name}, has been approved.`}
                 </p>
               </div>
               <form onSubmit={handleAccount} className="space-y-4">
@@ -340,6 +367,22 @@ export default function JoinPage() {
               <button onClick={acceptStaffInvite} disabled={busy}
                 className="w-full py-3.5 rounded-xl bg-school text-school-foreground font-bold text-base hover:opacity-90 disabled:opacity-60 flex items-center justify-center gap-2">
                 {busy ? <Loader2 size={16} className="animate-spin" /> : <><Check size={18} /> Accept invite</>}
+              </button>
+            </>
+          )}
+
+          {mode === "school-claim" && schoolClaimPreview && (
+            <>
+              <div className="text-center mb-8">
+                <div className="text-5xl mb-4">🏫</div>
+                <h1 className="font-display text-2xl font-bold text-foreground">Set up {schoolClaimPreview.school_name}</h1>
+                <p className="text-muted-foreground mt-2 text-sm">
+                  Your application was approved — this activates your admin access so you can add grades, classes and staff.
+                </p>
+              </div>
+              <button onClick={claimSchoolAdmin} disabled={busy}
+                className="w-full py-3.5 rounded-xl bg-school text-school-foreground font-bold text-base hover:opacity-90 disabled:opacity-60 flex items-center justify-center gap-2">
+                {busy ? <Loader2 size={16} className="animate-spin" /> : <><Check size={18} /> Activate my school</>}
               </button>
             </>
           )}

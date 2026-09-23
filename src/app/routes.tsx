@@ -13,6 +13,8 @@ import SearchPage from "../pages/SearchPage";
 import ExplorePage from "../pages/ExplorePage";
 import SchoolsPage from "../pages/SchoolsPage";
 import SchoolDetailPage from "../pages/SchoolDetailPage";
+import RegisterSchoolPage from "../pages/RegisterSchoolPage";
+import HomeschoolGuidePage from "../pages/HomeschoolGuidePage";
 import JoinPage from "../pages/JoinPage";
 import SettingsPage from "../pages/SettingsPage";
 import AdminDashboard from "../pages/AdminDashboard";
@@ -81,8 +83,12 @@ export const router = createBrowserRouter([
       { path: "explore",              Component: ExplorePage,     loader: requireAuthWithFamily },
       { path: "schools",              Component: SchoolsPage,     loader: requireAuthWithFamily },
       { path: "schools/:id",          Component: SchoolDetailPage, loader: requireAuthWithFamily },
-      // Universal join code route: class codes, handover codes, staff invites.
-      // No requireAuthWithFamily — JoinPage handles the signed-out and no-family cases itself.
+      // Public — no account needed to apply, or to read the homeschool guide.
+      { path: "register-school",      Component: RegisterSchoolPage },
+      { path: "homeschool",           Component: HomeschoolGuidePage },
+      // Universal join code route: class codes, handover codes, staff invites,
+      // school-admin claims. No requireAuthWithFamily — JoinPage handles the
+      // signed-out and no-family cases itself.
       { path: "join",                 Component: JoinPage },
       { path: "join/:code",           Component: JoinPage },
       { path: "settings",             Component: SettingsPage,    loader: requireAuthWithFamily },

@@ -292,6 +292,16 @@ export default function AuthPage() {
                   <Ticket size={15} /> I have an invite code
                 </button>
               </div>
+
+              {/* School registration CTA */}
+              <div className="mt-3 text-center">
+                <button
+                  onClick={() => navigate("/register-school")}
+                  className="inline-flex items-center gap-2 text-xs font-semibold text-school hover:opacity-80 transition-opacity"
+                >
+                  🏫 Are you a school? Register as a school
+                </button>
+              </div>
             </>
           )}
         </div>

@@ -18,9 +18,11 @@ import {
   type OverviewStats, type BookStat, type AuthorStat,
   type AgeGroupStat, type FamilyStat,
 } from "../lib/admin";
-import { AGE_GROUP_COLORS, AGE_GROUP_LABELS } from "../lib/types";
+import { AGE_GROUP_COLORS, AGE_GROUP_LABELS, SCHOOL_APPLICANT_ROLES, type School } from "../lib/types";
+import { APP_URL } from "../lib/shareCard";
+import { toast } from "sonner";
 
-type Tab = "overview" | "library" | "insights" | "moderation";
+type Tab = "overview" | "library" | "insights" | "moderation" | "schools";
 type DetailMetric =
   | "families" | "readers" | "books" | "pages" | "activity" | "age_groups" | "authors" | null;
 
@@ -210,13 +212,13 @@ export default function AdminDashboard() {
       {!detailMetric && (
         <div className="sticky top-14 z-30 bg-card border-b border-border print:hidden">
           <div className="max-w-3xl mx-auto px-4 flex">
-            {(["overview", "library", "insights", "moderation"] as Tab[]).map((t) => (
+            {(["overview", "library", "insights", "moderation", "schools"] as Tab[]).map((t) => (
               <button
                 key={t}
                 onClick={() => setTab(t)}
                 className={`px-4 py-3 text-sm font-semibold capitalize border-b-2 transition-colors ${tab === t ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"}`}
               >
-                {t === "overview" ? "Overview" : t === "library" ? "Library" : t === "insights" ? "Insights" : "Moderation"}
+                {t === "overview" ? "Overview" : t === "library" ? "Library" : t === "insights" ? "Insights" : t === "moderation" ? "Moderation" : "Schools"}
               </button>
             ))}
           </div>
@@ -224,7 +226,7 @@ export default function AdminDashboard() {
       )}
 
       {/* Filter bar — Library & Insights only */}
-      {!detailMetric && tab !== "overview" && tab !== "moderation" && (
+      {!detailMetric && tab !== "overview" && tab !== "moderation" && tab !== "schools" && (
         <div className="bg-muted/50 border-b border-border print:hidden">
           <div className="max-w-3xl mx-auto px-4 py-2.5 flex flex-wrap items-center gap-2">
             <div className="relative">
@@ -509,6 +511,7 @@ export default function AdminDashboard() {
 
         {/* ══ MODERATION TAB ══ */}
         {tab === "moderation" && <ModerationTab />}
+        {tab === "schools" && <SchoolApplicationsTab />}
       </main>
     </div>
   );
@@ -1244,6 +1247,263 @@ function ModerationTab() {
           Changes take effect immediately for all new comments across all clubs. Existing comments are not retroactively filtered.
         </p>
       )}
+    </div>
+  );
+}
+
+// ── School Applications ─────────────────────────────────────────
+
+function SchoolApplicationsTab() {
+  const { member } = useAuth();
+  const [schools, setSchools] = useState<School[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [rejectingId, setRejectingId] = useState<string | null>(null);
+  const [rejectReason, setRejectReason] = useState("");
+  const [showCreate, setShowCreate] = useState(false);
+
+  useEffect(() => { load(); }, []);
+
+  async function load() {
+    setLoading(true);
+    const { data } = await supabase.from("schools").select("*").order("created_at", { ascending: false });
+    setSchools((data as School[]) ?? []);
+    setLoading(false);
+  }
+
+  function randomCode(len: number) {
+    return Array.from({ length: len }, () => "0123456789ABCDEFGHJKLMNPQRSTUVWXYZ"[Math.floor(Math.random() * 34)]).join("");
+  }
+
+  async function approve(school: School) {
+    if (!member) return;
+    setBusyId(school.id);
+    try {
+      const claimCode = randomCode(10);
+      const { error } = await supabase.from("schools").update({
+        status: "approved",
+        admin_claim_code: claimCode,
+        reviewed_at: new Date().toISOString(),
+        reviewed_by: member.id,
+      }).eq("id", school.id);
+      if (error) throw error;
+
+      if (school.applicant_email) {
+        await supabase.auth.signInWithOtp({
+          email: school.applicant_email,
+          options: { emailRedirectTo: `${APP_URL}/join/${claimCode}` },
+        });
+      }
+      toast.success(`${school.name} approved — a setup link was emailed to ${school.applicant_email ?? "the applicant"}.`);
+      load();
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Could not approve this school");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function reject(school: School) {
+    if (!member) return;
+    setBusyId(school.id);
+    try {
+      const { error } = await supabase.from("schools").update({
+        status: "rejected",
+        rejection_reason: rejectReason.trim() || null,
+        reviewed_at: new Date().toISOString(),
+        reviewed_by: member.id,
+      }).eq("id", school.id);
+      if (error) throw error;
+      toast.success(`${school.name}'s application was rejected.`);
+      setRejectingId(null);
+      setRejectReason("");
+      load();
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Could not reject this school");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  const pending = schools.filter((s) => s.status === "pending");
+  const reviewed = schools.filter((s) => s.status !== "pending");
+
+  return (
+    <div className="max-w-3xl mx-auto px-4 py-8 pb-20">
+      <div className="flex items-start justify-between mb-6">
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <ShieldCheck size={20} className="text-school" />
+            <h2 className="font-display font-bold text-xl">School Applications</h2>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Every school — however it was created — needs approval before it can add grades, classes or staff.
+          </p>
+        </div>
+        <button
+          onClick={() => setShowCreate(true)}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-school text-school-foreground text-xs font-bold hover:opacity-90 shrink-0"
+        >
+          <Plus size={14} /> Register a school
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="flex justify-center py-16"><Loader2 size={24} className="animate-spin text-school" /></div>
+      ) : (
+        <>
+          <SectionHeader title={`Pending (${pending.length})`} />
+          {pending.length === 0 ? (
+            <p className="text-sm text-muted-foreground mb-8">No applications waiting on review.</p>
+          ) : (
+            <div className="space-y-3 mb-8">
+              {pending.map((s) => (
+                <div key={s.id} className="p-4 bg-card border border-border rounded-2xl">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="font-bold text-sm">{s.emoji} {s.name}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {s.suburb ? `${s.suburb}, ${s.city}` : s.city}
+                        {s.registration_number ? ` · Reg. ${s.registration_number}` : ""}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-1.5">
+                        Applicant: <strong className="text-foreground">{s.applicant_name}</strong> ({s.applicant_role})
+                        {s.applicant_email && <> · {s.applicant_email}</>}
+                        {s.applicant_phone && <> · {s.applicant_phone}</>}
+                      </p>
+                      {s.description && <p className="text-xs text-muted-foreground mt-1.5 italic">"{s.description}"</p>}
+                    </div>
+                  </div>
+
+                  {rejectingId === s.id ? (
+                    <div className="mt-3 space-y-2">
+                      <input
+                        value={rejectReason} onChange={(e) => setRejectReason(e.target.value)}
+                        placeholder="Reason (shown to the applicant, optional)"
+                        className="w-full px-3 py-2 rounded-lg bg-background border border-border text-xs outline-none focus:ring-2 focus:ring-ring"
+                      />
+                      <div className="flex gap-2">
+                        <button onClick={() => reject(s)} disabled={busyId === s.id} className="px-3 py-1.5 rounded-lg bg-destructive/10 text-destructive text-xs font-bold">Confirm reject</button>
+                        <button onClick={() => { setRejectingId(null); setRejectReason(""); }} className="px-3 py-1.5 rounded-lg bg-muted text-xs font-semibold">Cancel</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex gap-2 mt-3">
+                      <button onClick={() => approve(s)} disabled={busyId === s.id}
+                        className="flex-1 py-2 rounded-lg bg-school text-school-foreground text-xs font-bold flex items-center justify-center gap-1.5 disabled:opacity-60">
+                        {busyId === s.id ? <Loader2 size={13} className="animate-spin" /> : "Approve"}
+                      </button>
+                      <button onClick={() => setRejectingId(s.id)} disabled={busyId === s.id}
+                        className="flex-1 py-2 rounded-lg bg-muted text-xs font-bold text-muted-foreground">
+                        Reject
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          <SectionHeader title="Reviewed" />
+          {reviewed.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Nothing reviewed yet.</p>
+          ) : (
+            <div className="space-y-2">
+              {reviewed.map((s) => (
+                <div key={s.id} className="flex items-center gap-3 p-3 bg-card border border-border rounded-2xl">
+                  <span className="text-xl shrink-0">{s.emoji}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-sm truncate">{s.name}</p>
+                    <p className="text-xs text-muted-foreground">{s.applicant_name} · {s.city}</p>
+                  </div>
+                  <span className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full shrink-0 ${s.status === "approved" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+                    {s.status}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      {showCreate && <DirectSchoolCreateModal onClose={() => setShowCreate(false)} onCreated={load} />}
+    </div>
+  );
+}
+
+function DirectSchoolCreateModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+  const [name, setName] = useState("");
+  const [city, setCity] = useState("");
+  const [suburb, setSuburb] = useState("");
+  const [applicantName, setApplicantName] = useState("");
+  const [applicantRole, setApplicantRole] = useState(SCHOOL_APPLICANT_ROLES[0]);
+  const [applicantEmail, setApplicantEmail] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  function randomCode(len: number) {
+    return Array.from({ length: len }, () => "0123456789ABCDEFGHJKLMNPQRSTUVWXYZ"[Math.floor(Math.random() * 34)]).join("");
+  }
+
+  async function create() {
+    if (!name.trim() || !city.trim() || !applicantEmail.trim()) return;
+    setSaving(true);
+    try {
+      const claimCode = randomCode(10);
+      const { error } = await supabase.from("schools").insert({
+        name: name.trim(), emoji: "🏫", city: city.trim(), suburb: suburb.trim() || null,
+        status: "approved",
+        applicant_name: applicantName.trim() || null,
+        applicant_role: applicantRole,
+        applicant_email: applicantEmail.trim(),
+        admin_claim_code: claimCode,
+        popia_attested_at: new Date().toISOString(),
+      });
+      if (error) throw error;
+
+      await supabase.auth.signInWithOtp({
+        email: applicantEmail.trim(),
+        options: { emailRedirectTo: `${APP_URL}/join/${claimCode}` },
+      });
+      toast.success(`${name} created and a setup link emailed to ${applicantEmail}.`);
+      onCreated();
+      onClose();
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Could not create this school");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end lg:items-center justify-center">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative w-full max-w-sm bg-card rounded-t-3xl lg:rounded-2xl border border-border shadow-2xl z-10 p-6 space-y-3">
+        <div className="flex items-center justify-between mb-1">
+          <h3 className="font-display text-lg font-bold">Register a school directly</h3>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground"><X size={18} /></button>
+        </div>
+        <p className="text-xs text-muted-foreground mb-2">Skips the review queue — use this when you've already verified the school yourself (e.g. a phone call).</p>
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="School name *"
+          className="w-full px-3 py-2.5 rounded-xl bg-background border border-border text-sm outline-none focus:ring-2 focus:ring-ring" />
+        <div className="flex gap-2">
+          <input value={city} onChange={(e) => setCity(e.target.value)} placeholder="City *"
+            className="flex-1 px-3 py-2.5 rounded-xl bg-background border border-border text-sm outline-none focus:ring-2 focus:ring-ring" />
+          <input value={suburb} onChange={(e) => setSuburb(e.target.value)} placeholder="Suburb"
+            className="flex-1 px-3 py-2.5 rounded-xl bg-background border border-border text-sm outline-none focus:ring-2 focus:ring-ring" />
+        </div>
+        <input value={applicantName} onChange={(e) => setApplicantName(e.target.value)} placeholder="Admin's name"
+          className="w-full px-3 py-2.5 rounded-xl bg-background border border-border text-sm outline-none focus:ring-2 focus:ring-ring" />
+        <select value={applicantRole} onChange={(e) => setApplicantRole(e.target.value)}
+          className="w-full px-3 py-2.5 rounded-xl bg-background border border-border text-sm outline-none focus:ring-2 focus:ring-ring">
+          {SCHOOL_APPLICANT_ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
+        </select>
+        <input type="email" value={applicantEmail} onChange={(e) => setApplicantEmail(e.target.value)} placeholder="Admin's email *"
+          className="w-full px-3 py-2.5 rounded-xl bg-background border border-border text-sm outline-none focus:ring-2 focus:ring-ring" />
+        <button onClick={create} disabled={saving || !name.trim() || !city.trim() || !applicantEmail.trim()}
+          className="w-full py-3 rounded-xl bg-school text-school-foreground font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-60">
+          {saving ? <Loader2 size={16} className="animate-spin" /> : "Create & email setup link"}
+        </button>
+      </div>
     </div>
   );
 }

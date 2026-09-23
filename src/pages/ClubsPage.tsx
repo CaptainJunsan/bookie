@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { useNavigate } from "react-router";
+import { useNavigate, useSearchParams } from "react-router";
 import {
   Search, Plus, Users, Globe, Lock, ChevronRight,
   X, Loader2, Check, BookOpen, MapPin, Trash2,
@@ -30,6 +30,7 @@ const blankGroup = (): DraftGroup => ({ name: "", description: "", age_min: "", 
 export default function ClubsPage() {
   const { member, allMembers } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
   const [myClubs, setMyClubs] = useState<ClubWithMeta[]>([]);
   const [publicClubs, setPublicClubs] = useState<ClubWithMeta[]>([]);
@@ -37,7 +38,7 @@ export default function ClubsPage() {
   const [searchResults, setSearchResults] = useState<ClubWithMeta[]>([]);
   const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
-  const [showCreate, setShowCreate] = useState(false);
+  const [showCreate, setShowCreate] = useState(searchParams.get("create") === "1");
   const searchRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Create club state

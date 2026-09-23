@@ -127,10 +127,27 @@ export default function SchoolDetailPage() {
       </header>
 
       <div className="max-w-2xl mx-auto px-4 py-6 pb-28 lg:pb-10">
+        {isAdmin && school.status === "pending" && (
+          <div className="mb-5 p-4 bg-amber-50 border border-amber-200 rounded-2xl">
+            <p className="text-sm font-bold text-amber-800">Application under review</p>
+            <p className="text-xs text-amber-700 mt-1 leading-relaxed">
+              We're verifying {school.name} before it goes live — grades, classes and staff invites unlock once a
+              super admin approves it. We'll email {school.applicant_email ?? "you"} when that happens.
+            </p>
+          </div>
+        )}
+        {isAdmin && school.status === "rejected" && (
+          <div className="mb-5 p-4 bg-red-50 border border-red-200 rounded-2xl">
+            <p className="text-sm font-bold text-red-800">Application not approved</p>
+            <p className="text-xs text-red-700 mt-1 leading-relaxed">
+              {school.rejection_reason || "Get in touch with us if you think this was a mistake."}
+            </p>
+          </div>
+        )}
         {tab === "grades" && (
           <GradesTab
             schoolId={school.id}
-            isAdmin={isAdmin}
+            isAdmin={isAdmin && school.status === "approved"}
             grades={grades}
             classes={classes}
             copiedCode={copiedCode}
@@ -142,7 +159,7 @@ export default function SchoolDetailPage() {
         {tab === "staff" && (
           <StaffTab
             schoolId={school.id}
-            isAdmin={isAdmin}
+            isAdmin={isAdmin && school.status === "approved"}
             staff={staff}
             classes={classes}
             grades={grades}
@@ -156,7 +173,7 @@ export default function SchoolDetailPage() {
             classes={classes}
             grades={grades}
             learnersByClass={learnersByClass}
-            isAdmin={isAdmin}
+            isAdmin={isAdmin && school.status === "approved"}
             isStaff={isStaff}
             myTeachingClassIds={myTeachingClassIds}
             schoolId={school.id}
