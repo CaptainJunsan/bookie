@@ -114,6 +114,18 @@ export function ageGroupNeedsReview(ageGroup: string | null): boolean {
   return ageGroup === "10-15" || ageGroup === "16-21";
 }
 
+export const SUPPORTED_LANGUAGES = ["en", "af", "xh"] as const;
+export type SupportedLanguage = (typeof SUPPORTED_LANGUAGES)[number];
+
+// First-run language, taken from the browser/OS locale (PRD §9.2). Falls back
+// to English when the device locale isn't one of the MVP's three languages.
+export function detectLanguage(): SupportedLanguage {
+  const locale = (typeof navigator !== "undefined" ? navigator.language : "en").toLowerCase();
+  if (locale.startsWith("af")) return "af";
+  if (locale.startsWith("xh")) return "xh";
+  return "en";
+}
+
 export interface Invite {
   id: string;
   family_id: string;

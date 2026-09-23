@@ -623,10 +623,8 @@ Personal data is stored in Ireland (§15). The Privacy Policy states this.
 ## 15. Hosting and infrastructure
 
 ### 15.1 Region: Ireland
-- **Vercel:** set the function region to Dublin: `"regions": ["dub1"]` in `vercel.json`. Bookie currently has no server functions, so this only takes effect once functions are added (import jobs, payment webhooks, ad admin). Set it now anyway.
-- **Supabase:** the database, auth and file storage live in the Supabase project's region, which is what actually determines where data is stored. **Confirmed 2026-09-23: Bookie's production project is `rnyatweedvzmeubqvjbo`** (`https://rnyatweedvzmeubqvjbo.supabase.co`). Its region is still unconfirmed — the Supabase MCP connection available in this dev environment only reaches a different, unrelated project (`sadrabvzausmzubfsilg`, "Signal Website and App"), so the region needs checking directly in the Supabase dashboard for `rnyatweedvzmeubqvjbo` (§18, Q5).
-  - **Check its region.** If it is not `eu-west-1` (Ireland): as far as we know, a project's region can't be changed. Create a new project in `eu-west-1` and migrate the database, auth users and storage files.
-  - **Do this before any school joins**, because migration gets harder with more users.
+- **Vercel:** function region set to Dublin. **Done 2026-09-23** — `vercel.json` already had `"regions": ["dub1"]`, and the project's `serverlessFunctionRegion` was also set to `dub1` directly via the Vercel API (this is the setting that's actually authoritative for zero-config deployments; `vercel.json`'s `regions` key alone wasn't enough). Bookie currently has no server functions, so this only takes effect once functions are added (import jobs, payment webhooks, ad admin) — it's just correctly configured ahead of time now.
+- **Supabase:** the database, auth and file storage live in the Supabase project's region, which is what actually determines where data is stored. **Confirmed 2026-09-23: Bookie's production project is `rnyatweedvzmeubqvjbo`, and its region is Ireland** — matches the requirement, no migration needed.
 - Supabase Edge Functions that do heavy database work (import jobs) should run in `eu-west-1`.
 - Static files are served by Vercel's worldwide network regardless of region.
 
@@ -636,8 +634,8 @@ Personal data is stored in Ireland (§15). The Privacy Policy states this.
 - Official domain: pending. All links, share cards and QR codes must use a configurable base URL so the move from `bookie-seven-pi.vercel.app` is a setting change.
 
 ### 15.3 Acceptance criteria
-- [ ] `vercel.json` sets `regions` to `["dub1"]`.
-- [ ] The Supabase project is confirmed in `eu-west-1`, or migrated there, before the school pilot.
+- [x] `vercel.json` sets `regions` to `["dub1"]`, and the project's function region is set to `dub1`. Done 2026-09-23.
+- [x] The Supabase project is confirmed in `eu-west-1` (Ireland). Confirmed 2026-09-23.
 - [ ] Changing the base URL updates every link, share card and QR code.
 
 ---
@@ -686,7 +684,7 @@ No targets are set yet. Track from launch so targets can be set from real data:
 Each phase ends with something testable. Design (§5.8) runs in parallel from phase 1.
 
 **Phase 0: Foundations**
-1. Confirm or migrate the Supabase project to `eu-west-1`; set `vercel.json` to `dub1` (§15).
+1. ~~Confirm or migrate the Supabase project to `eu-west-1`; set `vercel.json` to `dub1`~~ — **Done 2026-09-23** (§15).
 2. Move all text into translation files; set up English, Afrikaans and isiXhosa with English fallback (§9).
 3. `reading_sessions` and re-read support (§6.2).
 4. New age groups and migration; `immersion_enabled` replaces `is_child_mode` (§2.2, §5.2).
@@ -732,7 +730,7 @@ Each phase ends with something testable. Design (§5.8) runs in parallel from ph
 | 2 | How long before unclaimed school-created profiles are deleted? | Phase 3 | Legal |
 | 3 | How do age groups move up without a date of birth? Options: ask parents once a year; store birth year only; school profiles use grade. | Phase 0 | Product |
 | 4 | Suggested daily reading time per age group: which education source? | Phase 1 | Product |
-| 5 | What region is Bookie's confirmed production project (`rnyatweedvzmeubqvjbo`) in? Needs checking directly in the Supabase dashboard — the MCP connection in this dev environment can't reach it, only an unrelated project. | Phase 0 | Dev |
+| ~~5~~ | ~~What region is Bookie's production project in?~~ **Resolved 2026-09-23: Ireland (`eu-west-1`).** | — | — |
 | 6 | POPIA basis for schools creating profiles for minors | Phase 3 | Legal |
 | 7 | Sign-in method for young learners on school profiles (picture password, class code + PIN, other)? | Phase 3 | Product + design |
 | 8 | Book Dash's response and partnership terms | Phase 2 publishing | Janico |
@@ -824,5 +822,9 @@ Recorded by Claude when v0.3 was written into this file, replacing v0.2, at the 
 - **Resolved 2026-09-23 (same day, follow-up):** Janico confirmed Bookie's production Supabase project is `rnyatweedvzmeubqvjbo`. Its region is still unchecked (§18 Q5 — the MCP connection in this dev environment can't reach that project to check automatically). The two manually-run migrations were provided and saved as `supabase/immersion_schema.sql` and `supabase/language_schema.sql`. Reviewed both:
   - `immersion_schema.sql` — adds `family_members.immersion_enabled boolean` (nullable) and backfills it from `age_group`, including sensible best-guess defaults for the legacy `10-15`/`16-21` bands (leaning Navigator-on / Traveller-off respectively). Idempotent (`WHERE immersion_enabled IS NULL` guard). Safe, no data loss.
   - `language_schema.sql` — adds `family_members.language text NOT NULL DEFAULT 'en' CHECK (...)`. Safe: `NOT NULL DEFAULT` on `ALTER TABLE ADD COLUMN` backfills existing rows automatically in Postgres.
-  - **Gap found while reviewing, not yet fixed:** neither field is set at profile-creation time in the app (`OnboardingPage.tsx`, `InvitePage.tsx` join flow) — `immersion_enabled` is only ever written from `SettingsPage.tsx`'s edit form, and `language` isn't read or written by any UI yet. New profiles will get `immersion_enabled = NULL` and `language = 'en'` regardless of age/locale until this is wired up. This is exactly PRD §17 Phase 0 item 4's remaining work — flagging it here so it isn't lost, not fixing it unprompted.
   - Added `language: string` to the `FamilyMember` TypeScript type (`src/lib/types.ts`) to match the live schema; no behavior change.
+- **Confirmed 2026-09-23: Supabase region is Ireland.** Vercel's function region was set to Dublin (`serverlessFunctionRegion: "dub1"`) directly on the project via the Vercel API — `vercel.json`'s `regions` key was already `["dub1"]` from an earlier commit, but the project-level dashboard setting is the one that's actually authoritative for zero-config deployments, and it was still on its old default. Bookie has no server functions yet, so this has no live effect until one is added (per §15.1) — it's just correctly configured ahead of time now. §18 Q5 (region) is resolved; §15.3's acceptance criteria for this item are met.
+- **Fixed 2026-09-23 (same day): the profile-creation gap flagged above.** `immersion_enabled` and `language` are now set at every profile-creation site, not just editable after the fact:
+  - Added `detectLanguage()` (`src/lib/types.ts`) — reads the browser/OS locale and maps it to `en`/`af`/`xh`, defaulting to `en`. Wired into all three insert sites: `OnboardingPage.tsx` (the signing-up parent, and every child added during onboarding), `SettingsPage.tsx`'s `addChild()`, and `InvitePage.tsx`'s regular adult join.
+  - **Real prerequisite gap found in the process:** neither `OnboardingPage.tsx`'s "Add a child" step nor `SettingsPage.tsx`'s "Add child" quick form asked for `age_group` at all — so there was no age to derive an Immersion default from. Added an optional age-group chip picker (same style/labels as the existing edit-child form) to both, and now set `immersion_enabled` from `IMMERSION_DEFAULT[age_group]` at creation when an age group is chosen (left `null`, i.e. "not yet configured," when it isn't — a parent can always set it later in Settings, where `openEditChild` was also fixed to default the toggle from the age tier instead of hardcoding it off for a never-configured profile).
+  - **Naming collision worth knowing about, not fixed here:** the `editChildMode`/`immersion_enabled` toggle in `SettingsPage.tsx` still carries its *original* meaning and copy — "Prevents leaving family or editing other profiles" (a permissions restriction) — even though PRD v0.3 §5.2 now defines `immersion_enabled` as the Immersion **map/visual mode** toggle, and the column was repurposed for that (replacing the old `is_child_mode`) before this session started. Right now those are the same boolean, so turning off "Child mode" for a Traveller-aged teen would also lift their permission restrictions, and vice versa — that coupling is almost certainly not intended once Immersion mode (Phase 1) actually exists as a distinct visual mode. Worth a real decision (two separate fields, or keep them coupled on purpose) before Phase 1 UI is built — not something to guess at in a bug-fix pass.

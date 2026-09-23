@@ -4,7 +4,10 @@ import { Plus, Trash2, Send, ArrowRight, ArrowLeft, Check, LogOut } from "lucide
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../contexts/AuthContext";
 import EmojiPicker from "../components/EmojiPicker";
-import { MEMBER_COLORS, PARENT_ROLES, CHILD_ROLES, genderFromRole } from "../lib/types";
+import {
+  MEMBER_COLORS, PARENT_ROLES, CHILD_ROLES, genderFromRole,
+  AGE_GROUPS_PICKER, AGE_GROUP_LABELS, AGE_GROUP_COLORS, IMMERSION_DEFAULT, detectLanguage,
+} from "../lib/types";
 import { toast } from "sonner";
 
 interface ChildProfile {
@@ -12,6 +15,7 @@ interface ChildProfile {
   role: string;
   gender: string;
   avatar_emoji: string;
+  age_group: string;
 }
 
 interface InvitePerson {
@@ -39,7 +43,7 @@ export default function OnboardingPage() {
 
   // Step 2: children
   const [children, setChildren] = useState<ChildProfile[]>([]);
-  const [newChild, setNewChild] = useState<ChildProfile>({ username: "", role: "Son", gender: "", avatar_emoji: "🧒" });
+  const [newChild, setNewChild] = useState<ChildProfile>({ username: "", role: "Son", gender: "", avatar_emoji: "🧒", age_group: "" });
   const [addingChild, setAddingChild] = useState(false);
 
   // Step 3: invites
@@ -56,7 +60,7 @@ export default function OnboardingPage() {
   function addChild() {
     if (!newChild.username.trim()) { toast.error("Please enter a username for the child"); return; }
     setChildren((prev) => [...prev, { ...newChild }]);
-    setNewChild({ username: "", role: "Son", gender: "", avatar_emoji: "🧒" });
+    setNewChild({ username: "", role: "Son", gender: "", avatar_emoji: "🧒", age_group: "" });
     setAddingChild(false);
   }
 
@@ -93,6 +97,7 @@ export default function OnboardingPage() {
           avatar_emoji: avatar,
           is_child: false,
           color: parentColor,
+          language: detectLanguage(),
         });
       if (mErr) throw mErr;
       const parentMember = { id: memberId };
@@ -108,6 +113,9 @@ export default function OnboardingPage() {
           is_child: true,
           color: MEMBER_COLORS[(i + 1) % MEMBER_COLORS.length],
           gender: c.gender || null,
+          age_group: c.age_group || null,
+          immersion_enabled: c.age_group ? (IMMERSION_DEFAULT[c.age_group] ?? null) : null,
+          language: detectLanguage(),
         }));
         await supabase.from("family_members").insert(childInserts);
       }
@@ -270,7 +278,7 @@ export default function OnboardingPage() {
                   <span className="text-2xl">{c.avatar_emoji}</span>
                   <div className="flex-1">
                     <p className="font-semibold text-sm">{c.username}</p>
-                    <p className="text-xs text-muted-foreground">{c.role}{c.gender ? ` · ${c.gender}` : ""}</p>
+                    <p className="text-xs text-muted-foreground">{c.role}{c.gender ? ` · ${c.gender}` : ""}{c.age_group ? ` · ${AGE_GROUP_LABELS[c.age_group]}` : ""}</p>
                   </div>
                   <button onClick={() => setChildren((prev) => prev.filter((_, j) => j !== i))} className="text-muted-foreground hover:text-destructive">
                     <Trash2 size={15} />
@@ -305,6 +313,27 @@ export default function OnboardingPage() {
                             {g === "Male" ? "♂ Male" : "♀ Female"}
                           </button>
                         ))}
+                      </div>
+                      <div>
+                        <p className="text-xs font-semibold text-muted-foreground mb-1.5">Age group (optional)</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {AGE_GROUPS_PICKER.map((ag) => {
+                            const selected = newChild.age_group === ag;
+                            const color = AGE_GROUP_COLORS[ag];
+                            return (
+                              <button
+                                key={ag}
+                                type="button"
+                                onClick={() => setNewChild((p) => ({ ...p, age_group: selected ? "" : ag }))}
+                                className={`px-2 py-1 rounded-lg text-[11px] font-semibold border transition-all ${selected ? "" : "bg-muted border-transparent text-muted-foreground"}`}
+                                style={selected ? { background: color + "22", borderColor: color + "88", color } : {}}
+                              >
+                                {AGE_GROUP_LABELS[ag]}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <p className="text-[11px] text-muted-foreground mt-1">Used to set up the right reading experience for their age. Can be changed later in Settings.</p>
                       </div>
                     </div>
                   </div>

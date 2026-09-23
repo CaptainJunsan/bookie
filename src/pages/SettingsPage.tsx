@@ -7,7 +7,11 @@ import {
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../contexts/AuthContext";
 import EmojiPicker from "../components/EmojiPicker";
-import { MEMBER_COLORS, CHILD_ROLES, PARENT_ROLES, genderFromRole, AGE_GROUPS, AGE_GROUPS_PICKER, AGE_GROUP_LABELS, AGE_GROUP_COLORS, ageGroupNeedsReview } from "../lib/types";
+import {
+  MEMBER_COLORS, CHILD_ROLES, PARENT_ROLES, genderFromRole,
+  AGE_GROUPS, AGE_GROUPS_PICKER, AGE_GROUP_LABELS, AGE_GROUP_COLORS, ageGroupNeedsReview,
+  IMMERSION_DEFAULT, detectLanguage,
+} from "../lib/types";
 import type { Invite, FamilyMember } from "../lib/types";
 import { toast } from "sonner";
 import {
@@ -45,6 +49,7 @@ export default function SettingsPage() {
   const [childRole, setChildRole] = useState("Son");
   const [childGender, setChildGender] = useState("");
   const [childAvatar, setChildAvatar] = useState("🧒");
+  const [childAgeGroup, setChildAgeGroup] = useState("");
   const [savingChild, setSavingChild] = useState(false);
 
   // Edit child
@@ -112,8 +117,11 @@ export default function SettingsPage() {
     setEditChildRole(m.role);
     setEditChildGender(m.gender || "");
     setEditChildAvatar(m.avatar_emoji);
-    // immersion_enabled is the new field; fall back to is_child_mode until migration runs
-    setEditChildMode(m.immersion_enabled ?? m.is_child_mode ?? false);
+    // immersion_enabled is the new field; fall back to is_child_mode, then to the
+    // age-tier default when this profile has never had either explicitly set.
+    setEditChildMode(
+      m.immersion_enabled ?? m.is_child_mode ?? (m.age_group ? IMMERSION_DEFAULT[m.age_group] ?? false : false)
+    );
     setEditChildAgeGroup(m.age_group || "");
     setGrantingLoginFor(null);
     setChildLoginEmail("");
@@ -151,9 +159,12 @@ export default function SettingsPage() {
       is_child: true,
       color,
       gender: childGender || null,
+      age_group: childAgeGroup || null,
+      immersion_enabled: childAgeGroup ? (IMMERSION_DEFAULT[childAgeGroup] ?? null) : null,
+      language: detectLanguage(),
     });
     await refreshFamily();
-    setChildUsername(""); setChildRole("Son"); setChildGender(""); setChildAvatar("🧒");
+    setChildUsername(""); setChildRole("Son"); setChildGender(""); setChildAvatar("🧒"); setChildAgeGroup("");
     setShowAddChild(false);
     toast.success("Child profile added!");
     setSavingChild(false);
@@ -656,6 +667,26 @@ export default function SettingsPage() {
                     {g === "Male" ? "♂ Male" : "♀ Female"}
                   </button>
                 ))}
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-muted-foreground mb-1.5">Age group (optional)</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {AGE_GROUPS_PICKER.map((ag) => {
+                    const selected = childAgeGroup === ag;
+                    const color = AGE_GROUP_COLORS[ag];
+                    return (
+                      <button
+                        key={ag}
+                        type="button"
+                        onClick={() => setChildAgeGroup(selected ? "" : ag)}
+                        className={`px-2 py-1 rounded-lg text-[11px] font-semibold border transition-all ${selected ? "" : "bg-muted border-transparent text-muted-foreground"}`}
+                        style={selected ? { background: color + "22", borderColor: color + "88", color } : {}}
+                      >
+                        {AGE_GROUP_LABELS[ag]}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
               <EmojiPicker value={childAvatar} onChange={setChildAvatar} />
               <div className="flex gap-2">

@@ -4,7 +4,7 @@ import { Eye, EyeOff, ArrowRight, Check } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../contexts/AuthContext";
 import EmojiPicker from "../components/EmojiPicker";
-import { MEMBER_COLORS, PARENT_ROLES, genderFromRole } from "../lib/types";
+import { MEMBER_COLORS, PARENT_ROLES, genderFromRole, detectLanguage } from "../lib/types";
 import { toast } from "sonner";
 import type { Invite } from "../lib/types";
 
@@ -148,6 +148,7 @@ export default function InvitePage() {
           is_child: false,
           color,
           gender: genderFromRole(role) || null,
+          language: detectLanguage(),
         });
         if (memberError) throw memberError;
 
