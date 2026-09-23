@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
-import { BookOpen, PlusCircle, TrendingUp, Search, Users } from "lucide-react";
+import { BookOpen, PlusCircle, TrendingUp, Search, Users, Sparkles } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../contexts/AuthContext";
 import ReaderProfileSheet from "../components/ReaderProfileSheet";
@@ -15,6 +15,7 @@ import {
   milestoneKey,
   type PendingMilestone,
 } from "../lib/milestones";
+import { AGE_TIER_NAMES } from "../lib/types";
 import type { Book, ReadingProgress, Rating, FamilyMember } from "../lib/types";
 
 interface BookWithData {
@@ -31,6 +32,73 @@ interface Stats {
   bestReaderCount: number;
   latestBook: Book | null;
   finishedCountByMember: Record<string, number>;
+  myBookwormScore: number;
+}
+
+// ── Bookworm score + levels — mirrors ReaderProfileSheet's canonical formula ──
+interface BookwormInput {
+  booksFinished: number;
+  totalPagesRead: number;
+  reviewsWritten: number;
+  booksReading: number;
+  booksWantToRead: number;
+}
+
+function bookwormScore(input: BookwormInput): number {
+  return (
+    input.booksFinished * 10 +
+    Math.floor(input.totalPagesRead / 100) +
+    input.reviewsWritten * 5 +
+    input.booksReading * 3 +
+    input.booksWantToRead
+  );
+}
+
+const LEVELS = [
+  { min: 0, title: "Bookworm Jr.", emoji: "🌱" },
+  { min: 10, title: "Page Turner", emoji: "📖" },
+  { min: 30, title: "Bookworm", emoji: "📚" },
+  { min: 60, title: "Reading Champion", emoji: "🏆" },
+  { min: 100, title: "Legendary Reader", emoji: "🌟" },
+  { min: 200, title: "Reading Legend", emoji: "⚡" },
+] as const;
+
+function getLevel(score: number) {
+  let idx = 0;
+  for (let i = 0; i < LEVELS.length; i++) {
+    if (score >= LEVELS[i].min) idx = i;
+  }
+  return LEVELS[idx];
+}
+
+// ── Age-adaptive greeting — gentle mode by default (PRD §5.9, §6.3) ──────────
+function getGreeting(nickname: string, ageGroup: string | null): { line1: string; line2: string } {
+  const h = new Date().getHours();
+  const time = h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening";
+  const tier = ageGroup ? AGE_TIER_NAMES[ageGroup] : null;
+
+  if (tier === "Explorers" || tier === "Adventurers" || tier === "Navigators") {
+    const adventures = [
+      "Ready for your next adventure?",
+      "Every page is a new world 🌍",
+      "What will you discover today?",
+      "Books are waiting for you!",
+    ];
+    return {
+      line1: `${time}, ${nickname}! 👋`,
+      line2: adventures[new Date().getDay() % adventures.length],
+    };
+  }
+  if (tier === "Travellers") {
+    return { line1: `${time}, ${nickname}.`, line2: "Keep the story going." };
+  }
+  return { line1: `${time},`, line2: nickname };
+}
+
+// Legacy '10-15' is included so existing child profiles awaiting an age-band
+// update (PRD §2.2) still get the gentler experience, not the adult default.
+function isChildTier(ageGroup: string | null): boolean {
+  return ["3-5", "6-9", "10-12", "10-15"].includes(ageGroup ?? "");
 }
 
 export default function DashboardPage() {
@@ -41,6 +109,7 @@ export default function DashboardPage() {
   const [stats, setStats] = useState<Stats>({
     totalBooks: 0, booksFinished: 0, totalPages: 0,
     bestReaders: [], bestReaderCount: 0, latestBook: null, finishedCountByMember: {},
+    myBookwormScore: 0,
   });
   const [loading, setLoading] = useState(true);
   const [selectedReader, setSelectedReader] = useState<FamilyMember | null>(null);
@@ -93,6 +162,16 @@ export default function DashboardPage() {
     const finishedCountByMember: Record<string, number> = {};
     finishedByMember.forEach(({ member: m, count }) => { finishedCountByMember[m.id] = count; });
 
+    // My own Bookworm score, same inputs/formula as ReaderProfileSheet.
+    const myProgress = progress.filter((p) => p.member_id === member?.id);
+    const myBookwormScore = bookwormScore({
+      booksFinished: myProgress.filter((p) => p.status === "finished").length,
+      totalPagesRead: myProgress.reduce((acc, p) => acc + p.current_page, 0),
+      reviewsWritten: ratings.filter((r) => r.member_id === member?.id && r.review).length,
+      booksReading: myProgress.filter((p) => p.status === "reading").length,
+      booksWantToRead: myProgress.filter((p) => p.status === "want_to_read").length,
+    });
+
     setStats({
       totalBooks: books.length,
       booksFinished: finishedProgress.length,
@@ -101,6 +180,7 @@ export default function DashboardPage() {
       bestReaderCount: topCount,
       latestBook: books[0] ?? null,
       finishedCountByMember,
+      myBookwormScore,
     });
     setRecentBooks(recent);
     setCurrentlyReading(reading);
@@ -113,70 +193,64 @@ export default function DashboardPage() {
     }
   }
 
-  async function checkMilestones(
-  books: Book[],
-  progress: ReadingProgress[]
-) {
-  if (!family) return;
-  const memberIds = allMembers.map((m) => m.id);
+  async function checkMilestones(books: Book[], progress: ReadingProgress[]) {
+    if (!family) return;
+    const memberIds = allMembers.map((m) => m.id);
 
-  // 1. DB is the source of truth across devices. If we can't read it,
-  //    bail out this session instead of risking a false re-celebration.
-  const celebratedMap = await fetchCelebratedMilestones(memberIds);
-  if (celebratedMap === null) {
-    console.warn("Skipping milestone check — could not verify celebration history.");
-    return;
+    // 1. DB is the source of truth across devices. If we can't read it,
+    //    bail out this session instead of risking a false re-celebration.
+    const celebratedMap = await fetchCelebratedMilestones(memberIds);
+    if (celebratedMap === null) {
+      console.warn("Skipping milestone check — could not verify celebration history.");
+      return;
+    }
+
+    // 2. localStorage now only guards against double-queueing within this
+    //    browser session — it is never treated as authoritative.
+    const localCelebrated = getLocalCelebrated(family.id);
+
+    const statsMap: Record<string, ReturnType<typeof computeMemberStats>> = {};
+    for (const m of allMembers) {
+      statsMap[m.id] = computeMemberStats(m.id, progress, books);
+    }
+
+    const allPending = computePendingMilestones(allMembers as FamilyMember[], statsMap, celebratedMap);
+
+    const pending = allPending.filter(
+      (p) => !localCelebrated.has(milestoneKey(p.memberId, p.type, p.value))
+    );
+    if (pending.length === 0) return;
+
+    // 3. Write first, show only what's confirmed written. A failed write means
+    //    we'll safely re-offer that milestone next session instead of it
+    //    silently vanishing — but we won't celebrate it now unconfirmed.
+    const results = await Promise.all(
+      pending.map(async (p) => ({
+        milestone: p,
+        saved: await markMilestoneCelebrated(p.memberId, p.type, p.value),
+      }))
+    );
+
+    const confirmed = results.filter((r) => r.saved).map((r) => r.milestone);
+    const failed = results.filter((r) => !r.saved).map((r) => r.milestone);
+    if (failed.length > 0) {
+      console.error(`Failed to persist ${failed.length} milestone(s) — will retry next session.`, failed);
+    }
+
+    for (const p of confirmed) {
+      markLocalCelebrated(family.id, milestoneKey(p.memberId, p.type, p.value));
+    }
+    if (confirmed.length > 0) setMilestoneQueue(confirmed);
   }
-
-  // 2. localStorage now only guards against double-queueing within this
-  //    browser session — it is never treated as authoritative.
-  const localCelebrated = getLocalCelebrated(family.id);
-
-  const statsMap: Record<string, ReturnType<typeof computeMemberStats>> = {};
-  for (const m of allMembers) {
-    statsMap[m.id] = computeMemberStats(m.id, progress, books);
-  }
-
-  const allPending = computePendingMilestones(allMembers as FamilyMember[], statsMap, celebratedMap);
-
-  const pending = allPending.filter(
-    (p) => !localCelebrated.has(milestoneKey(p.memberId, p.type, p.value))
-  );
-  if (pending.length === 0) return;
-
-  // 3. Write first, show only what's confirmed written. A failed write means
-  //    we'll safely re-offer that milestone next session instead of it
-  //    silently vanishing — but we won't celebrate it now unconfirmed.
-  const results = await Promise.all(
-    pending.map(async (p) => ({
-      milestone: p,
-      saved: await markMilestoneCelebrated(p.memberId, p.type, p.value),
-    }))
-  );
-
-  const confirmed = results.filter((r) => r.saved).map((r) => r.milestone);
-  const failed = results.filter((r) => !r.saved).map((r) => r.milestone);
-  if (failed.length > 0) {
-    console.error(`Failed to persist ${failed.length} milestone(s) — will retry next session.`, failed);
-  }
-
-  for (const p of confirmed) {
-    markLocalCelebrated(family.id, milestoneKey(p.memberId, p.type, p.value));
-  }
-  if (confirmed.length > 0) setMilestoneQueue(confirmed);
-}
 
   function dismissCurrentMilestone() {
     // Already persisted in checkMilestones — just advance the display queue.
     setMilestoneQueue((q) => q.slice(1));
   }
 
-  const greeting = () => {
-    const h = new Date().getHours();
-    if (h < 12) return "Good morning";
-    if (h < 17) return "Good afternoon";
-    return "Good evening";
-  };
+  const greeting = getGreeting(member?.nickname ?? "", member?.age_group ?? null);
+  const isChild = isChildTier(member?.age_group ?? null);
+  const myLevel = getLevel(stats.myBookwormScore);
 
   if (loading) {
     return (
@@ -191,24 +265,36 @@ export default function DashboardPage() {
       <div className="lg:grid lg:grid-cols-[1fr_300px] xl:grid-cols-[1fr_340px] lg:gap-8 lg:items-start space-y-8 lg:space-y-0">
       {/* ── Left / main column ── */}
       <div className="space-y-8">
-      {/* Welcome */}
-      <div>
-        <p className="text-sm text-muted-foreground font-medium">{greeting()},</p>
+
+      {/* Welcome + level badge */}
+      <div className="flex items-start justify-between gap-4">
         <button
           onClick={() => member && setSelectedReader(member as FamilyMember)}
-          className="group flex items-center gap-2"
+          className="group text-left"
         >
-          <h1 className="font-display text-3xl font-bold text-foreground group-hover:text-primary transition-colors">
-            {member?.nickname}
-          </h1>
-          <span className="text-2xl">{member?.avatar_emoji}</span>
+          <p className="text-sm text-muted-foreground font-medium">{greeting.line1}</p>
+          <div className="flex items-center gap-2">
+            <h1 className="font-display text-3xl font-bold text-foreground group-hover:text-primary transition-colors">
+              {isChild ? greeting.line2 : member?.nickname}
+            </h1>
+            <span className="text-2xl">{member?.avatar_emoji}</span>
+          </div>
+          {!isChild && <p className="text-sm text-muted-foreground mt-0.5">{greeting.line2}</p>}
+        </button>
+
+        <button
+          onClick={() => member && setSelectedReader(member as FamilyMember)}
+          className="flex-shrink-0 flex flex-col items-center gap-1 bg-card border border-border rounded-2xl px-3.5 py-3 hover:border-primary/40 hover:shadow-sm active:scale-[0.97] transition-all"
+        >
+          <span className="text-2xl leading-none">{myLevel.emoji}</span>
+          <span className="text-[9px] font-bold text-primary leading-tight text-center max-w-[64px]">{myLevel.title}</span>
         </button>
       </div>
 
       {/* Stats row */}
       <div className="grid grid-cols-3 gap-3">
         {[
-          { label: "Books", value: stats.totalBooks, emoji: "📚" },
+          { label: isChild ? "Books read 🎉" : "Books", value: stats.totalBooks, emoji: "📚" },
           { label: "Finished", value: stats.booksFinished, emoji: "✅" },
           { label: "Pages read", value: stats.totalPages.toLocaleString(), emoji: "📄" },
         ].map(({ label, value, emoji }) => (
@@ -229,11 +315,12 @@ export default function DashboardPage() {
           <span className="text-4xl">{stats.bestReaders[0].avatar_emoji}</span>
           <div className="flex-1">
             <p className="text-primary-foreground/70 text-xs font-semibold uppercase tracking-wide flex items-center gap-1">
-              <TrendingUp size={12} /> Star Reader
+              <TrendingUp size={12} /> {isChild ? "Top Reader in the Family" : "Star Reader"}
             </p>
             <p className="font-display text-xl font-bold">{stats.bestReaders[0].nickname}</p>
             <p className="text-primary-foreground/80 text-sm">
-              {stats.bestReaderCount} book{stats.bestReaderCount !== 1 ? "s" : ""} finished · tap to view profile
+              {stats.bestReaderCount} book{stats.bestReaderCount !== 1 ? "s" : ""} finished
+              {!isChild && " · tap to view profile"}
             </p>
           </div>
           <span className="text-3xl">🏆</span>
@@ -242,7 +329,7 @@ export default function DashboardPage() {
       {stats.bestReaders.length > 1 && (
         <div className="bg-gradient-to-r from-primary to-primary/80 rounded-2xl p-5 text-primary-foreground">
           <p className="text-primary-foreground/70 text-xs font-semibold uppercase tracking-wide flex items-center gap-1 mb-3">
-            <TrendingUp size={12} /> Star Readers — {stats.bestReaderCount} book{stats.bestReaderCount !== 1 ? "s" : ""} each
+            <TrendingUp size={12} /> {isChild ? "Top Readers" : "Star Readers"} — {stats.bestReaderCount} book{stats.bestReaderCount !== 1 ? "s" : ""} each
           </p>
           <div className="flex gap-3 flex-wrap">
             {stats.bestReaders.map((r) => (
@@ -265,7 +352,7 @@ export default function DashboardPage() {
         <section>
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-display font-bold text-lg flex items-center gap-2">
-              <BookOpen size={18} className="text-primary" /> Currently reading
+              <BookOpen size={18} className="text-primary" /> {isChild ? "Keep reading 📖" : "Currently reading"}
             </h2>
           </div>
           <div className="space-y-3">
@@ -330,7 +417,7 @@ export default function DashboardPage() {
 
       {/* Family readers — mobile only (also in desktop right panel) */}
       <section className="lg:hidden">
-        <h2 className="font-display font-bold text-lg mb-3">Your readers</h2>
+        <h2 className="font-display font-bold text-lg mb-3">{isChild ? "My family reads" : "Your readers"}</h2>
         <div className="flex gap-3 flex-wrap">
           {allMembers.map((m) => {
             const booksRead = stats.finishedCountByMember[m.id] ?? 0;
@@ -355,7 +442,7 @@ export default function DashboardPage() {
       {recentBooks.length > 0 ? (
         <section>
           <div className="flex items-center justify-between mb-3">
-            <h2 className="font-display font-bold text-lg">Recent books</h2>
+            <h2 className="font-display font-bold text-lg">{isChild ? "Books we've read 📚" : "Recent books"}</h2>
             <button onClick={() => navigate("/books")} className="text-sm text-primary font-semibold hover:underline">See all</button>
           </div>
           <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
@@ -383,14 +470,20 @@ export default function DashboardPage() {
       ) : (
         <div className="text-center py-12 bg-card border border-border rounded-2xl">
           <span className="text-5xl block mb-4">📚</span>
-          <h3 className="font-display font-bold text-xl mb-2">No books yet!</h3>
-          <p className="text-muted-foreground text-sm mb-5">Start your family library by adding your first book.</p>
-          <button
-            onClick={() => navigate("/books/add")}
-            className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-primary text-primary-foreground font-bold text-sm hover:opacity-90 transition-opacity"
-          >
-            <PlusCircle size={16} /> Add your first book
-          </button>
+          <h3 className="font-display font-bold text-xl mb-2">{isChild ? "Time to start reading!" : "No books yet!"}</h3>
+          <p className="text-muted-foreground text-sm mb-5">
+            {isChild
+              ? "Ask a grown-up to add your first book and let the adventure begin."
+              : "Start your family library by adding your first book."}
+          </p>
+          {!isChild && (
+            <button
+              onClick={() => navigate("/books/add")}
+              className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-primary text-primary-foreground font-bold text-sm hover:opacity-90 transition-opacity"
+            >
+              <PlusCircle size={16} /> Add your first book
+            </button>
+          )}
         </div>
       )}
       </div>{/* end left column */}
@@ -399,7 +492,7 @@ export default function DashboardPage() {
       <aside className="hidden lg:block space-y-6 lg:sticky lg:top-6">
         {/* Readers */}
         <div className="bg-card border border-border rounded-2xl p-4">
-          <h2 className="font-display font-bold text-base mb-3">Your readers</h2>
+          <h2 className="font-display font-bold text-base mb-3">{isChild ? "My family" : "Your readers"}</h2>
           <div className="space-y-2">
             {allMembers.map((m) => {
               const booksRead = stats.finishedCountByMember[m.id] ?? 0;
@@ -430,7 +523,7 @@ export default function DashboardPage() {
         {stats.bestReaders.length > 0 && stats.bestReaderCount > 0 && (
           <div className="bg-gradient-to-br from-primary to-primary/80 rounded-2xl p-4 text-primary-foreground">
             <p className="text-xs font-semibold text-primary-foreground/70 uppercase tracking-wide mb-2 flex items-center gap-1">
-              <TrendingUp size={11} /> Star reader{stats.bestReaders.length > 1 ? "s" : ""}
+              <TrendingUp size={11} /> {isChild ? "Top reader" : "Star reader"}{stats.bestReaders.length > 1 ? "s" : ""}
             </p>
             <div className="space-y-1.5">
               {stats.bestReaders.map((r) => (
@@ -450,10 +543,12 @@ export default function DashboardPage() {
         {/* Quick links */}
         <div className="bg-card border border-border rounded-2xl p-4 space-y-1.5">
           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Quick links</p>
-          <button onClick={() => navigate("/books/add")}
-            className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-muted transition-colors text-sm font-semibold text-left">
-            <PlusCircle size={16} className="text-primary shrink-0" /> Add a book
-          </button>
+          {!isChild && (
+            <button onClick={() => navigate("/books/add")}
+              className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-muted transition-colors text-sm font-semibold text-left">
+              <PlusCircle size={16} className="text-primary shrink-0" /> Add a book
+            </button>
+          )}
           <button onClick={() => navigate("/search")}
             className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-muted transition-colors text-sm font-semibold text-left">
             <Search size={16} className="text-primary shrink-0" /> Find a book
@@ -461,6 +556,10 @@ export default function DashboardPage() {
           <button onClick={() => navigate("/clubs")}
             className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-muted transition-colors text-sm font-semibold text-left">
             <Users size={16} className="text-primary shrink-0" /> Reading clubs
+          </button>
+          <button onClick={() => navigate("/explore")}
+            className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-muted transition-colors text-sm font-semibold text-left">
+            <Sparkles size={16} className="text-primary shrink-0" /> Explore
           </button>
         </div>
       </aside>
