@@ -559,8 +559,8 @@ export default function SettingsPage() {
                   >
                     <ShieldCheck size={16} className={editChildMode ? "text-amber-600" : "text-muted-foreground"} />
                     <div className="flex-1">
-                      <p className={`text-xs font-bold ${editChildMode ? "text-amber-700" : "text-foreground"}`}>Child mode</p>
-                      <p className="text-[11px] text-muted-foreground">Prevents leaving family or editing other profiles</p>
+                      <p className={`text-xs font-bold ${editChildMode ? "text-amber-700" : "text-foreground"}`}>🗺️ Immersion mode</p>
+                      <p className="text-[11px] text-muted-foreground">Shows the reading-adventure map, and limits what they can do in the app (can't leave the family or edit other profiles)</p>
                     </div>
                     <div className={`w-9 h-5 rounded-full transition-colors relative ${editChildMode ? "bg-amber-400" : "bg-muted"}`}>
                       <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all ${editChildMode ? "left-4" : "left-0.5"}`} />
