@@ -1,6 +1,6 @@
 import { Outlet, NavLink, useLocation, useNavigate } from "react-router";
 import {
-  BookMarked, LayoutDashboard, Compass, Users, Menu,
+  Home, BookMarked, Compass, Users, Menu,
   Settings, LogOut, Share2, UserPlus, ShieldCheck, X,
 } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
@@ -89,7 +89,7 @@ export default function Layout() {
           {/* Logo */}
           <div className="px-5 py-5 border-b border-border">
             <button
-              onClick={() => navigate("/dashboard")}
+              onClick={() => navigate("/home")}
               className="flex items-center gap-2.5 hover:opacity-80 transition-opacity"
             >
               <span className="text-2xl">📚</span>
@@ -100,7 +100,7 @@ export default function Layout() {
 
           {/* Nav */}
           <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
-            <SideNavItem to="/dashboard" icon={<LayoutDashboard size={18} />} label="Home" />
+            <SideNavItem to="/home" icon={<Home size={18} />} label="Home" />
             <SideNavItem to="/books"     icon={<BookMarked size={18} />}     label="Library" />
             <SideNavItem to="/clubs"     icon={<Users size={18} />}          label="Clubs" badge={hasClubNotifs} />
             <SideNavItem to="/explore"   icon={<Compass size={18} />}        label="Explore" />
@@ -141,7 +141,7 @@ export default function Layout() {
       {isAppRoute && (
         <header className="sticky top-0 z-40 bg-card/95 border-b border-border backdrop-blur-sm lg:hidden">
           <div className="max-w-2xl mx-auto px-4 h-14 flex items-center justify-between">
-            <button onClick={() => navigate("/dashboard")} className="flex items-center gap-2">
+            <button onClick={() => navigate("/home")} className="flex items-center gap-2">
               <span className="text-2xl">📚</span>
               <span className="font-display font-bold text-lg text-primary tracking-tight">Bookie</span>
             </button>
@@ -238,7 +238,7 @@ export default function Layout() {
       {isAppRoute && (
         <nav className="sticky bottom-0 z-40 bg-card/95 border-t border-border backdrop-blur-sm pb-safe lg:hidden">
           <div className="max-w-2xl mx-auto px-1 pt-1.5 pb-[18px] flex items-center justify-around">
-            <NavItem to="/dashboard" icon={<LayoutDashboard size={22} />} label="Home" />
+            <NavItem to="/home"      icon={<Home size={22} />}             label="Home" />
             <NavItem to="/books"     icon={<BookMarked size={22} />}      label="Library" />
             <NavItem to="/clubs"     icon={<Users size={22} />}           label="Clubs" badge={hasClubNotifs} />
             <NavItem to="/explore"   icon={<Compass size={22} />}         label="Explore" />

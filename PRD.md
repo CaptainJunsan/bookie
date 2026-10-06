@@ -991,12 +991,13 @@ All seven items were resolved by Janico on 2026-10-06 (§23.1) and merged into t
 
 **Done 2026-10-06** (§24, §25): `reading_sessions`/re-reads, and the Schools arbitrary-depth rebuild.
 
+**Done 2026-10-06** (§26, in addition to §24/§25 above): the Home/Dashboard split.
+
 **Still queued, in this order:**
 
 1. **Multi-family membership** (§23.2) — not yet scheduled into §17's build order; foundational enough (touches every page using `useAuth()`) that it likely belongs closer to Phase 0 than wherever it would naturally fall as a late addition. Needs its own sequencing pass through §17.
-2. **Home/Dashboard split** — not started; the pill-button nav decision (§23.1.3) assumes this exists, but today's single `/dashboard` route still does both jobs.
-3. **Payment integration** for the new subscription plans (§12.5) — provider still unchosen (§18 Q10); sequence after multi-family membership, since "primary family" needs to be a real concept first.
-4. **Schools consent-flow rebuild** (§10.3) — now unblocked by the structure landing in §25, but not yet started.
+2. **Payment integration** for the new subscription plans (§12.5) — provider still unchosen (§18 Q10); sequence after multi-family membership, since "primary family" needs to be a real concept first.
+3. **Schools consent-flow rebuild** (§10.3) — now unblocked by the structure landing in §25, but not yet started.
 
 ### 23.4 Session log — decisions resolved, nav and typography (2026-10-06)
 
@@ -1043,3 +1044,20 @@ Built per §10.2 / §23.1 item 5 / §23.3 item 2 — adopting the "Rebrand and R
 - **No UI for `school_tags`/`learner_tags`** — the tables and RLS exist; nothing in `SchoolDetailPage.tsx` creates or assigns a tag yet.
 - **The §10.3 consent-flow rebuild is still not started** — this pass only rebuilt the structure it would attach to.
 - **Not browser-tested** — verified via `npm run build` (clean) and direct SQL inspection of the applied schema/policies/functions, not by exercising the flows in a running app (no browser-automation tooling available in this environment, same limitation noted throughout this PRD).
+
+---
+
+## 26. Session log — Home/Dashboard split (2026-10-06)
+
+Built per §23.3 item 4 — the pill-button nav decision (§23.1.3) assumed a separate stats-only Dashboard existed to link to; it didn't, so the bottom nav's Home item and the single `/dashboard` route both pointed at one page doing both jobs.
+
+**Split:** `src/pages/HomePage.tsx` (new, route `/home`) is now the bottom-nav "Home" destination — greeting, currently-reading, recent books, add-first-book empty state, and (desktop) a Quick Links panel. `src/pages/DashboardPage.tsx` (rewritten, route `/dashboard`, kept as a distinct route rather than renamed) is now stats-only — Bookworm level/score, the Books/Finished/Pages stat row, Star Reader(s), and the per-member "Your readers" list — reached from Home via a small pill button next to the greeting, with its own header and a back arrow to `/home`, exactly as specified. It is **not** a bottom-nav tab, per the decision.
+
+**Data loading was split along the same line, not shared.** Each page fetches independently (Home: books/progress/ratings for the "what to read next" content and the milestone check; Dashboard: a `head: true` book *count* instead of full rows, plus progress/ratings/reading_sessions for the stats). Some queries overlap between the two pages, but they're never mounted simultaneously, so this duplication was judged simpler and lower-risk than introducing a shared data-fetching layer — not revisited unless it becomes a real performance problem.
+
+**Every `navigate("/dashboard")` call site that meant "take the user to the app's main landing"** — post-login (`AuthPage`), post-onboarding (`OnboardingPage`), post-invite-accept (`InvitePage`), the `JoinPage` "done" screen, the admin-dashboard exit button and non-admin bounce (`AdminDashboard`), both route loaders' signed-in redirects (`routes.tsx`), and the logo/nav links in `Layout.tsx` — was repointed to `/home`. The mobile bottom nav and desktop sidebar's "Home" item changed icon from `LayoutDashboard` to `Home` (lucide-react) to match its new, non-stats destination; `LayoutDashboard` is now used for the Dashboard pill instead.
+
+**Deliberately not done this pass:**
+
+- **No shared "primary family" or cross-family awareness** — this was a pure page split, not a data-model change. It doesn't touch or unblock multi-family membership (§23.2), which is still queued separately and is the bigger, riskier remaining item.
+- **Not browser-tested** — same standing limitation as every other UI change this session; verified via `npm run build` only.

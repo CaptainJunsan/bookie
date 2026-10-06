@@ -5,6 +5,7 @@ import LandingPage from "../pages/LandingPage";
 import AuthPage from "../pages/AuthPage";
 import OnboardingPage from "../pages/OnboardingPage";
 import InvitePage from "../pages/InvitePage";
+import HomePage from "../pages/HomePage";
 import DashboardPage from "../pages/DashboardPage";
 import BooksPage from "../pages/BooksPage";
 import BookDetailPage from "../pages/BookDetailPage";
@@ -39,7 +40,7 @@ async function requireNoAuth() {
       .select("id")
       .eq("user_id", session.user.id)
       .single();
-    throw redirect(member ? "/dashboard" : "/onboarding");
+    throw redirect(member ? "/home" : "/onboarding");
   }
   return null;
 }
@@ -66,13 +67,14 @@ export const router = createBrowserRouter([
         if (session) {
           const { data: member } = await supabase
             .from("family_members").select("id").eq("user_id", session.user.id).single();
-          if (member) throw redirect("/dashboard");
+          if (member) throw redirect("/home");
         }
         return null;
       }},
       { path: "auth",                Component: AuthPage,        loader: requireNoAuth },
       { path: "invite/:token",        Component: InvitePage },
       { path: "onboarding",           Component: OnboardingPage,  loader: requireAuth },
+      { path: "home",                 Component: HomePage,        loader: requireAuthWithFamily },
       { path: "dashboard",            Component: DashboardPage,   loader: requireAuthWithFamily },
       { path: "books",                Component: BooksPage,       loader: requireAuthWithFamily },
       { path: "books/add",            Component: AddBookPage,     loader: requireAuthWithFamily },

@@ -80,7 +80,7 @@ export default function AdminDashboard() {
   const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
-    if (!isAdmin) { navigate("/dashboard"); return; }
+    if (!isAdmin) { navigate("/home"); return; }
     loadAll();
   }, [isAdmin]);
 
@@ -188,7 +188,7 @@ export default function AdminDashboard() {
       <header className="sticky top-0 z-40 bg-foreground text-background border-b border-foreground/20 print:hidden">
         <div className="max-w-3xl mx-auto px-4 h-14 flex items-center gap-3">
           <button
-            onClick={() => detailMetric ? setDetailMetric(null) : navigate("/dashboard")}
+            onClick={() => detailMetric ? setDetailMetric(null) : navigate("/home")}
             className="flex items-center gap-1.5 text-background/70 hover:text-background transition-colors text-sm font-semibold"
           >
             <ArrowLeft size={16} />

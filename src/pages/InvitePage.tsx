@@ -79,9 +79,9 @@ export default function InvitePage() {
         .eq("family_id", data.family_id)
         .single();
       if (existing) {
-        // Already a member — just go to dashboard
+        // Already a member — just go home
         await refreshFamily();
-        navigate("/dashboard");
+        navigate("/home");
         return;
       }
       setStep("profile");
@@ -158,7 +158,7 @@ export default function InvitePage() {
       setStep("joining");
       await refreshFamily();
 
-      setTimeout(() => navigate("/dashboard"), 1200);
+      setTimeout(() => navigate("/home"), 1200);
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Failed to join family");
       setSaving(false);

@@ -261,7 +261,7 @@ export default function JoinPage() {
         <span className="text-5xl">🎉</span>
         <h1 className="font-display text-2xl font-bold">All set!</h1>
         <p className="text-muted-foreground max-w-sm">{doneMessage}</p>
-        <button onClick={() => navigate("/dashboard")} className="px-6 py-3 rounded-xl bg-primary text-primary-foreground font-bold hover:opacity-90">Go to Dashboard</button>
+        <button onClick={() => navigate("/home")} className="px-6 py-3 rounded-xl bg-primary text-primary-foreground font-bold hover:opacity-90">Go to Home</button>
       </div>
     );
   }

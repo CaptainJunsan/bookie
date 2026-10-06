@@ -110,7 +110,7 @@ export default function AuthPage() {
         .select("id")
         .eq("user_id", userId)
         .single();
-      navigate(member ? "/dashboard" : "/onboarding");
+      navigate(member ? "/home" : "/onboarding");
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Something went wrong");
     } finally {

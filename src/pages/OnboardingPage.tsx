@@ -138,7 +138,7 @@ export default function OnboardingPage() {
       }
 
       await refreshFamily();
-      navigate(returnTo && returnTo.startsWith("/") ? returnTo : "/dashboard");
+      navigate(returnTo && returnTo.startsWith("/") ? returnTo : "/home");
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Something went wrong");
     } finally {
