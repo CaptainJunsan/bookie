@@ -4,6 +4,7 @@ import { Plus, Trash2, Send, ArrowRight, ArrowLeft, Check, LogOut } from "lucide
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../contexts/AuthContext";
 import EmojiPicker from "../components/EmojiPicker";
+import Logo from "../components/Logo";
 import {
   MEMBER_COLORS, PARENT_ROLES, CHILD_ROLES, genderFromRole,
   AGE_GROUPS_PICKER, AGE_GROUP_LABELS, AGE_GROUP_COLORS, IMMERSION_DEFAULT, detectLanguage,
@@ -164,7 +165,7 @@ export default function OnboardingPage() {
         {/* Top bar */}
         <div className="flex items-center justify-between mb-8">
           <div className="flex items-center gap-2">
-            <span className="text-2xl">📚</span>
+            <Logo size={24} />
             <span className="font-display font-bold text-xl text-primary">Bookie</span>
           </div>
           {confirmLogout ? (

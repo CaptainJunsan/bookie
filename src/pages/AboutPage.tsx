@@ -1,5 +1,6 @@
 import { useNavigate } from "react-router";
 import { ArrowLeft } from "lucide-react";
+import Logo from "../components/Logo";
 
 export default function AboutPage() {
   const navigate = useNavigate();
@@ -12,7 +13,7 @@ export default function AboutPage() {
             <ArrowLeft size={18} />
           </button>
           <div className="flex items-center gap-2">
-            <span className="text-xl">📚</span>
+            <Logo size={20} />
             <span className="font-display font-bold text-lg text-primary tracking-tight">Bookie</span>
           </div>
         </div>

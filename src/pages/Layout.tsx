@@ -5,6 +5,7 @@ import {
 } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import { cn } from "../app/components/ui/utils";
+import Logo from "../components/Logo";
 import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { ageGroupNeedsReview } from "../lib/types";
@@ -92,7 +93,7 @@ export default function Layout() {
               onClick={() => navigate("/home")}
               className="flex items-center gap-2.5 hover:opacity-80 transition-opacity"
             >
-              <span className="text-2xl">📚</span>
+              <Logo size={24} />
               <span className="font-display font-bold text-xl text-primary tracking-tight">Bookie</span>
             </button>
             <p className="text-xs text-muted-foreground mt-1 font-medium truncate">{family.name}</p>
@@ -142,7 +143,7 @@ export default function Layout() {
         <header className="sticky top-0 z-40 bg-card/95 border-b border-border backdrop-blur-sm lg:hidden">
           <div className="max-w-2xl mx-auto px-4 h-14 flex items-center justify-between">
             <button onClick={() => navigate("/home")} className="flex items-center gap-2">
-              <span className="text-2xl">📚</span>
+              <Logo size={24} />
               <span className="font-display font-bold text-lg text-primary tracking-tight">Bookie</span>
             </button>
             <div className="flex items-center gap-2">

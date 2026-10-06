@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import BookCover from "../components/BookCover";
+import Logo from "../components/Logo";
 import {
   ArrowLeft, ArrowRight, RefreshCw, Search, ChevronDown,
   Printer, Star, Users, BookOpen, FileText, TrendingUp, Home,
@@ -196,7 +197,7 @@ export default function AdminDashboard() {
           </button>
           <div className="flex-1" />
           <span className="text-sm font-bold flex items-center gap-2">
-            <span className="text-lg">📚</span> Bookie
+            <Logo size={18} /> Bookie
             <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-primary/20 text-primary tracking-wider uppercase">Admin</span>
           </span>
           <button onClick={handlePrint} className="w-8 h-8 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 transition-colors" title="Print / Export PDF">

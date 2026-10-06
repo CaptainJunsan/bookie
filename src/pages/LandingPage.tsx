@@ -1,5 +1,6 @@
 import { useNavigate, Link } from "react-router";
 import { BookOpen, Users, Star, Share2, TrendingUp, ArrowRight, MapPin } from "lucide-react";
+import Logo from "../components/Logo";
 
 export default function LandingPage() {
   const navigate = useNavigate();
@@ -10,7 +11,7 @@ export default function LandingPage() {
       <header className="sticky top-0 z-40 bg-background/80 backdrop-blur-md border-b border-border">
         <div className="max-w-5xl mx-auto px-5 h-14 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <span className="text-2xl">📚</span>
+            <Logo size={24} />
             <span className="font-display font-bold text-xl text-primary tracking-tight">Bookie</span>
           </div>
           <div className="flex items-center gap-3">
@@ -299,7 +300,7 @@ export default function LandingPage() {
         <div className="max-w-5xl mx-auto">
           <div className="flex flex-col sm:flex-row items-center justify-between gap-6">
             <div className="flex items-center gap-2">
-              <span className="text-xl">📚</span>
+              <Logo size={20} />
               <span className="font-display font-bold text-base text-primary">Bookie</span>
             </div>
             <nav className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-muted-foreground">
