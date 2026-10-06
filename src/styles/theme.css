@@ -103,6 +103,15 @@
 }
 
 @theme inline {
+  /* Tailwind only generates a utility class for a theme key it sees inside
+     an @theme block — a plain :root custom property of the same name (as
+     --font-display/--font-sans/--font-mono were, above) is invisible to its
+     build-time scan. That silently meant .font-display (used on every
+     heading in the app) was never emitted as a CSS rule at all, so every
+     heading fell through to the inherited body font instead. */
+  --font-display: var(--font-display);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
