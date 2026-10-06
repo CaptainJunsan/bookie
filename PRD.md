@@ -1,10 +1,10 @@
 # Bookie — Product Requirements Document
 
-**Version:** 0.3
+**Version:** 0.4
 **Status:** Approved direction for MVP build. Items marked *Open* still need a decision.
-**Last updated:** 2026-09-23
+**Last updated:** 2026-10-06
 **Owner:** Janico Steyn, Chief Product Officer, Signal UX
-**Replaces:** v0.2 (2026-09-20). Decisions in v0.2 that this version reverses are listed in §0.2.
+**Replaces:** v0.3 (2026-09-23). Decisions in v0.3 that this version reverses are listed in §0.3. (v0.3 itself replaced v0.2 — see §0.2.)
 
 ---
 
@@ -27,6 +27,20 @@
 | Experience | Not covered | Total redesign, including Immersion mode | §5 |
 | Languages | English only | English, Afrikaans, isiXhosa in the MVP | §9 |
 | Hosting | Not covered | Ireland (Vercel `dub1`, Supabase `eu-west-1`) | §15 |
+
+### 0.3 Changes from v0.3
+Resolved 2026-10-06, after reconciling a separately-written "Rebrand and Rebuild" PRD (§23) against v0.3.
+
+| Topic | v0.3 said | v0.4 says | Section |
+|---|---|---|---|
+| Ads | R49 once-off purchase, ad-free forever | Recurring plans: R50/month individual, R150/month family (4 adults), R35/month per extra adult | §12.5 |
+| The name | — (not in question) | Confirmed: "Bookie" stays, permanently. Any future rebrand is visual/brand only, never the name | §13.2 |
+| Navigation | 4-item bottom nav (Home/Library/Clubs/Explore); Settings reachable only via the hamburger drawer | Settings promoted to a 5th bottom-nav item (badge moved with it); no separate "Family" tab — Family stays inside Settings; a future "Dashboard" (stats-only) is reached from Home via a small pill, not its own nav tab | §23.1 |
+| Date of birth | Never collected (POPIA minimisation) | Still never *required*; a user may now optionally add one if they want, and it is never shared or shown to anyone else, including other family members | §14.1 |
+| Schools structure | Fixed two levels: school → grade → class (shipped 2026-09-23) | Adopting arbitrary-depth nested groups (SAO/DH model) plus a separate flat "tags" concept, per the new PRD. **Not yet rebuilt** — no schools are registered yet, so there's no migration risk, but this is a large change needing its own dedicated pass, not a quick patch | §10.2, §23.1 |
+| School consent | A handover code the school distributes however it likes; no email captured until the parent claims | **Recommended** (not yet built): a hybrid — keep today's minimal-data learner profile, but require an explicit, logged, emailed consent step (timestamp, IP, wording version, expiry, "not my child" option) before the profile is usable, not deferred to claim time. See §23.1 for the reasoning | §10.3, §10.8, §23.1 |
+| Email provider | Supabase's own auth email only (used for the school-approval magic link) | Holding off on Resend for now — Supabase's own email continues to cover what's needed; revisit if volume or latency becomes a real problem | §23.1 |
+| Typography | Fraunces (display) / Nunito (body) | Chiron GoRound TC (display/headings) / Inter (body, descriptive and supportive text) | §13, §23.4 |
 
 ---
 
@@ -128,7 +142,7 @@ The file reference appendix from v0.2 is kept in §20.
 4. **Full app in English, Afrikaans and isiXhosa** (§9).
 5. **Schools and home-schooling:** schools, grades, classes, school-created learner profiles with handover, class codes, class reading mode, reports (§10).
 6. **Carried-over fixes:** full book list from a reader profile, school-ready invite links (§11).
-7. **Ads in adult areas and R49 ad-free purchase** (§12).
+7. **Ads in adult areas and ad-free subscription plans** (§12).
 8. **Signal UX branding and the Boekie story** (§13).
 9. **Hosting in Ireland** (§15).
 
@@ -447,9 +461,13 @@ Bookie becomes an installable web app (PWA). Three things are stored on the devi
 Make Bookie work for South African **state schools** and **home-schooling parents**, on **CAPS** or **Cambridge**, without adding admin work for teachers or pressure for children.
 
 ### 10.2 Structure
-*Open (§18, Q1, carried from v0.2):* whether a school is a new top-level entity owning classes, or a club of type `school`. **Recommendation:** a new `schools` entity with `grades` and `classes`, because schools need their own roles, reports and ad rules (§12), and the handover flow in §10.3 doesn't fit club membership.
+~~*Open (§18, Q1, carried from v0.2):* whether a school is a new top-level entity owning classes, or a club of type `school`.~~ **Resolved** (and then superseded) **— see below.** The original recommendation (a new `schools` entity with `grades` and `classes`, because schools need their own roles, reports and ad rules (§12), and the handover flow in §10.3 doesn't fit club membership) was built 2026-09-23 (§22) as exactly two fixed levels of nesting.
 
-**Roles:** school admin, teacher, parent/guardian, learner. Roles are scoped to a school or class, not just a club.
+**Changed 2026-10-06** (§0.3, §23.1): adopting the "Rebrand and Rebuild" PRD's structure instead — **arbitrary-depth nested groups**, not fixed at two levels. A school account owner (SAO) configures top-level groups (e.g. a Foundation Phase and a Senior Phase), assigns a department head (DH) to manage each one or manages it personally (no cap on DH count), and the SAO or a DH creates further sub-groups by grade, class, or reading aptitude — aptitude groups can themselves be scoped to a grade or class. Every group at every level must have an adult owner or manager. Alongside groups (which define membership), a separate flat **tags** concept exists for cross-cutting labels like "special needs" or "excellent reader" — tags categorise, they don't grant membership, and the UI must make that distinction obvious. *Open (new, §23.1):* who can see which tags — not decided, since some (like "special needs") may be sensitive data.
+
+**Not yet rebuilt.** What's live today (`supabase/schools_schema.sql`) is still the fixed `schools → grades → classes` shape from §22 — correct for its time, now superseded. Janico confirmed this is safe to replace outright: **no schools are registered and no one has signed up yet**, so there's no data to migrate. This is a substantial rebuild (likely `ltree` or a closure table for the group hierarchy, rewriting the RLS helpers in `schools_schema.sql`/`schools_schema_v2.sql`, and reworking `SchoolDetailPage.tsx`'s Grades & Classes and Roster tabs to operate on an arbitrary tree instead of two fixed levels) — it needs its own dedicated planning pass, not a quick patch alongside other work. Blocks resuming §22.1 slices 2–4 (class books, class reading mode, reports), since those would be built differently against the new shape.
+
+**Roles:** SAO (school admin) / DH / teacher / parent-guardian / learner, scoped to whichever group a person is assigned to, not just "the whole school" or "one fixed class" as today's flat `school_members.role` allows.
 
 **Learner profile fields:** curriculum (CAPS, Cambridge, none), grade (CAPS) or stage (Cambridge), home language, first additional language. Book suggestions use grade and language.
 
@@ -477,6 +495,8 @@ Make Bookie work for South African **state schools** and **home-schooling parent
 - Handover reuses and extends the existing `claim_child_member` mechanism (`InvitePage.tsx:123-134`).
 
 **Consent.** How a school may create profiles for minors under POPIA **must be checked by a lawyer before the first school pilot** (§14). The Privacy Policy and Terms need a school section naming the school as a party that can see class reading data.
+
+**Changed 2026-10-06** (§0.3, §23.1): the "Rebrand and Rebuild" PRD proposes a different sequence from what's built — the school supplies the parent's email **at creation time** and an automated, signed, single-use, expiring consent link goes out immediately, logged (wording version, timestamp, IP) and revocable, with a "this isn't me" cancel-and-flag option and an auto-delete window if the parent never responds. **Recommendation (asked for by Janico, reasoning in §23.1): adopt this, as a hybrid with what's already built** — keep the existing minimal-data learner profile (nickname + avatar only, nothing else, same as today) as the thing being created, but require the explicit logged consent step *before* that profile is usable, rather than deferring all verification to whenever a parent happens to claim it. Today's handover-code claim (below) has no identity check at all — anyone holding the code can claim a profile, whether or not they're actually the child's parent. An upfront, logged, revocable consent record is a meaningfully stronger POPIA accountability position, and is what a compliance review would be looking for. **Not yet built** — sequenced after the Schools structure rebuild above, since the new consent flow would attach to whatever the new group/learner shape turns out to be, not the structure being replaced.
 
 **Acceptance criteria**
 - [ ] A teacher can create 30 learner profiles for a class and print 30 handover letters.
@@ -523,6 +543,8 @@ Make Bookie work for South African **state schools** and **home-schooling parent
 
 **Explicitly temporary.** This whole flow — public form, manual super-admin review, EMIS number as the only real verification signal — is a stopgap until a more automated verification method exists (e.g. checking against an official schools database, or a partnership with a education department). Framed that way to Janico when this was built; revisit once volume makes manual review impractical.
 
+**Confirmed 2026-10-06: this pattern (Supabase's own `signInWithOtp` as the delivery vehicle, all real content/logging on the page the link lands on) is the model to reuse for the parent-consent flow above, not Resend** — Janico chose to hold off on adding Resend for now, provided Supabase can handle it without real lag. The consent *screen itself* (data journey, declaration, logging) lives on the landing page after click-through, same as school-admin approval does today; the email is just the entry point. Revisit if latency or Supabase's auth-email volume limits become a real problem.
+
 **Not yet done:** no email is sent on *rejection* (only approval uses `signInWithOtp`, and there's no applicant-facing rejection notice beyond what they'd see if they returned to check — there's currently no "check my application status" page for someone without an account). No re-application flow if rejected. Both are reasonable follow-ups once real applications start coming in.
 
 ---
@@ -548,7 +570,7 @@ The reader profile sheet shows only 10 finished books, and "+N more" does nothin
 
 ---
 
-## 12. Ads and the R49 ad-free option
+## 12. Ads and ad-free plans
 
 ### 12.1 Why
 Ads cover running costs. Using Bookie is always free. Ads are secondary to every goal in §1.2.
@@ -577,29 +599,36 @@ Ads cover running costs. Using Bookie is always free. Ads are secondary to every
 
 **Idea, parked for later (added 2026-09-23):** bookstores as a partnership channel beyond just buying an ad slot — a two-way marketing arrangement, not just a sponsor. A bookstore hands out printed Bookie bookmarks (free distribution/word-of-mouth for Bookie, no ad spend from us) and, in exchange, gets to run its own reading challenges on Bookie (e.g. "read 5 books this holiday, get 10% off your next visit") using the challenge mechanic from §6.4 — giving the bookstore visibility and a reason to keep the bookmarks in circulation. Not scoped or designed yet — needs its own pass once challenges (§6.4) exist to hang it on, but worth keeping in view since it's a genuinely free-to-Bookie growth channel that fits the "free forever" principle (§1.4) better than paid ad networks do.
 
-### 12.5 R49 ad-free purchase
-**Copy**
-> **Go ad-free: R49, once-off.**
-> Pay once and your family never sees an ad in Bookie again, for as long as Bookie runs. No subscription, no renewals.
+### 12.5 Ad-free plans
+
+**Changed 2026-10-06** (§0.3, §23.1): replaces the earlier R49-once-off plan with recurring subscriptions, per the "Rebrand and Rebuild" PRD. Not yet built — no payment integration exists yet (Open Question §18 Q10 still applies: provider not chosen).
+
+| Plan | Price | Covers |
+|---|---|---|
+| Ad-free, individual | R50/month | One adult user |
+| Ad-free, family | R150/month | Up to 4 adults whose *primary* family it is |
+| Extra adult | R35/month each | Each adult beyond 4, offered at invite time |
 
 **Rules**
-- A **family** purchase removes ads for every adult profile in the family.
-- A **teacher** can buy it for their own account.
-- Schools and libraries do not need it: children never see ads anyway, and school admin screens can be made ad-free by agreement.
-- Payment through a South African payment provider (e.g. PayFast, Yoco or Paystack). Card details never touch Bookie's servers.
-- The purchase is recorded against the family or account (proposed `ad_free_purchases` table) and survives new devices and sign-ins.
-- Receipt by email. Refunds handled manually.
+- Ad-free status is **per user**, derived from that user's own subscription or from their **primary** family's plan. A secondary family's subscription doesn't apply to its secondary members, and a secondary member's joining doesn't affect that family's billing or adult count.
+- A grandparent with their own unpaid primary family who joins their kids' ad-free family still sees ads — only their primary family's plan counts for them.
+- When inviting a new adult, offer the +R35 add-on only if this would be that adult's primary family, their own primary family isn't already ad-free, and they have no subscription of their own.
+- A **teacher** can subscribe for their own account.
+- Schools and official libraries never need a plan: children never see ads regardless, and school admin screens can be made ad-free by agreement (§12.2).
+- Payment through a South African payment provider (e.g. PayFast, Yoco or Paystack), with webhooks keeping Supabase's ad-free status current. Card details never touch Bookie's servers.
+- Depends on §0.3's multi-family-membership change (reconciliation §23.2) for "primary family" to be a real, queryable concept — sequence payment integration after that lands, not before.
 
 **Acceptance criteria**
-- [ ] After purchase, no ads appear for any adult in that family, on any device, after sign-in.
-- [ ] No ad ever appears on a child profile, in Immersion mode, in the reader or in class reading mode, whether or not the family has paid.
-- [ ] The purchase is restored automatically after signing in on a new device.
+- [ ] After subscribing, no ads appear for the subscriber (individual plan) or any adult in their primary family (family plan), on any device, after sign-in.
+- [ ] No ad ever appears on a child profile, in Immersion mode, in the reader or in class reading mode, regardless of any plan's status.
+- [ ] Ad-free status is restored automatically after signing in on a new device.
+- [ ] A lapsed/cancelled subscription correctly brings ads back without manual intervention.
 
 ### 12.6 Landing page and terms: must change before the first ad
 The landing page currently says "100% free · No fees · No ads · No catch · Ever" (`LandingPage.tsx:67`), "No subscription. No ads. No fees. Just books." (line 286) and "Free forever." (line 312).
 
 - Replace with wording that stays true, for example: **"Free to use. Always. Children never see ads."**
-- Update the Terms and Privacy Policy to describe ads and the R49 purchase.
+- Update the Terms and Privacy Policy to describe ads and the ad-free subscription plans.
 - Tell existing users directly before ads go live.
 - **No ad may go live until this is done.**
 
@@ -614,13 +643,24 @@ The landing page currently says "100% free · No fees · No ads · No catch · E
 ### 13.2 The name: Bookie
 - Kept. "Bookie" combines the English "book" with the Afrikaans "boekie" (little book).
 - **Tell the Boekie story on the landing page and the About page.** In South Africa, "bookie" also means a betting bookmaker; the story makes the intended meaning clear, especially for schools.
+- **Reconfirmed 2026-10-06** (§0.3, §23.1): a separate PRD raised the question of a rebrand by calling "Bookie" a working name. Janico confirmed directly — the name is steadfast and permanent. Any future rebrand work is visual/brand style only, never the name.
+
+### 13.3 Typography
+
+**Added 2026-10-06**, from a Figma reference (two screens: the landing/welcome screen and a book-detail/reader screen).
+
+- **Display/heading font: Chiron GoRound TC** (Google Fonts) — the wordmark, all headings, buttons, nav labels, and other prominent text.
+- **Body font: Inter** (Google Fonts) — descriptive and supportive text (paragraph copy, captions, secondary/muted text).
+- Implemented by swapping the existing two-tier font system's values: `--font-display` (was Fraunces) → Chiron GoRound TC; `--font-sans` (was Nunito, the global body default) → Inter. The mechanism — `font-display` as a utility class used throughout the app, `font-sans` applied globally to `body` — was already in place and didn't need to change, just the font names it points to (`src/styles/fonts.css`, `src/styles/theme.css`). `--font-mono` (DM Mono) is unchanged — not mentioned in the brief.
+- Full visual/brand style (colour, components, the rest of the design system) is still explicitly deferred, per Janico's own note — this is typography only, applied because it was concretely specified with reference screens, not a signal that the broader brand/style work has started.
 
 ---
 
 ## 14. Privacy and legal
 
 ### 14.1 Principles
-- Collect the least data needed. Nicknames, not full legal names. No date of birth.
+- Collect the least data needed. Nicknames, not full legal names.
+- **Date of birth is never required.** The existing coarse `age_group` band stays the default and sufficient mechanism for age-appropriate experience and club age-gating. **Clarified 2026-10-06:** a user *may* optionally add their own exact date of birth if they want to (not built yet), but it is **never shared or shown to anyone else** — not other family members, not clubs, not schools — and nothing in the product requires it to function.
 - Children's data is controlled by a parent or guardian, or by the school until handover (§10.3).
 - No tracking, analytics profiling or personalised ads on children, and no personalised ads for anyone (§12.4).
 - Immersion mode never uses gender (§5.4).
@@ -631,7 +671,7 @@ The landing page currently says "100% free · No fees · No ads · No catch · E
 | POPIA basis for schools creating learner profiles for minors, and the handover process | First school pilot |
 | Retention period for unclaimed school-created profiles | First school pilot |
 | School section in the Privacy Policy and Terms | First school pilot |
-| Ads and R49 purchase in the Terms and Privacy Policy | First ad goes live |
+| Ads and ad-free subscription plans in the Terms and Privacy Policy | First ad goes live |
 | Book Dash attribution and partnership terms | First Book Dash title published |
 | Copyright rule for out-of-copyright classics (US, South Africa, Ireland/EU) | Classics (later) |
 
@@ -735,7 +775,7 @@ Each phase ends with something testable. Design (§5.8) runs in parallel from ph
 **Phase 4: Ads and ad-free purchase**
 1. Landing page, Terms and Privacy Policy updated; users told (§12.6).
 2. Ad slots in adult areas only; sponsor ad admin (§12.2–§12.4).
-3. R49 purchase through a South African payment provider (§12.5).
+3. Ad-free subscription plans through a South African payment provider (§12.5).
 
 **Throughout:** "Made by Signal UX" and the Boekie story (§13).
 
@@ -754,7 +794,7 @@ Each phase ends with something testable. Design (§5.8) runs in parallel from ph
 | 7 | Sign-in method for young learners on school profiles (picture password, class code + PIN, other)? | Phase 3 | Product + design |
 | 8 | Book Dash's response and partnership terms | Phase 2 publishing | Janico |
 | 9 | Ad frequency per screen, and which adult screens carry ads | Phase 4 | Product + design |
-| 10 | Which entity receives R49 payments, and how it's invoiced | Phase 4 | Signal UX |
+| 10 | Which entity receives subscription payments, and how they're invoiced | Phase 4 | Signal UX |
 | 11 | Vector and animation formats, and size limit per region | Phase 1 design start | Design + dev |
 | 12 | Official domain | Before school materials are printed | Signal UX |
 
@@ -896,17 +936,17 @@ Built same day as the foundation pass above, prompted directly by Janico: a scho
 
 Janico supplied a separate, independently-written PRD dated 2026-10-05 ("Bookie PRD: Rebrand and Rebuild"), explicitly described as thoroughly thought through, and asked for an analysis against this document before anything is merged or built. Saved verbatim at `docs/2026-10-05-rebrand-rebuild-prd.md` for reference. **No brand, visual style, design system or component library has been specified yet — out of scope here and for this section.** This section is analysis only; nothing below has been implemented or applied to the schema. Referred to as **"the new PRD"** below; this file remains **"v0.3."**
 
-### 23.1 Decisions needed before merging — read this part first
+### 23.1 Decisions — resolved 2026-10-06
 
-These are places where the new PRD appears to deliberately change a settled v0.3 decision, or where its intent is genuinely ambiguous against what's already built. Everything else in §23.2 is lower-stakes and can likely just be adopted.
+Answered directly by Janico. Recorded here with the reasoning, since several affect multiple areas below. Nothing in this subsection is still open except where explicitly marked.
 
-1. **Ads: once-off purchase, or recurring subscription?** v0.3 §12.5 settled on **R49 once-off, ad-free forever** ("No subscription, no renewals" — written into the landing-page copy itself). The new PRD specifies **recurring monthly plans**: R50/month individual, R150/month family (up to 4 adults), R35/month per extra adult. These are not reconcilable as written — one or the other is correct. The *ad display* rules (adult-only, no tracking, no targeting, schools/libraries ad-free, never shown to a child under any circumstance) are consistent between both documents and don't need a decision. Needs an explicit call: is this an intentional pivot to recurring revenue, superseding §12.5, or should the new PRD's pricing table be read as a mistake/placeholder against an already-decided model?
-2. **Is "Bookie" being renamed?** The new PRD's own title is "Rebrand and Rebuild," and its intro says "'Bookie' is the working name until the rebrand lands" — implying the name itself is open. v0.3 §13.2 explicitly settled this the other way: **"Kept. ... Tell the Boekie story."** Given no brand spec exists yet (per your note), this likely just means brand work (name included) is coming later and shouldn't be assumed either way in the meantime — but it's worth stating plainly rather than silently continuing to build "Boekie story" copy and `signalux.co.za`-branded share cards under an assumption that might not hold.
-3. **Navigation: 4 tabs or 5, and where does the book library go?** Today's bottom nav is **Home / Library / Clubs / Explore** (4 items; `src/pages/Layout.tsx`), where "Home" is actually the stats dashboard. The new PRD specifies **Home / Dashboard / Clubs / Explore / Family** (5 items) with "Home" and "Dashboard" as two genuinely different screens (a daily bookmark-calendar/timer page vs. a stats-only page) — and never mentions a "Library" surface at all. Needs a decision: is Library folded into Family, into the new Dashboard, or does it stay a 6th/separate surface? Is 5 bottom-nav items acceptable (most mobile guidance, including this app's own unfilled `guidelines/Guidelines.md` template, suggests capping at 4)?
-4. **Age bands, or real birthdates?** v0.3 §14.1 is explicit: **"No date of birth."** Age is a coarse self-reported band (`family_members.age_group`), by design, for POPIA minimisation. The new PRD's age-gating section says "relies on self-declared birthdates" for club age-gating, and date-of-birth-driven auto-conversion at 18 is described as settled ("At 18 the account converts automatically.") — the current schema has no DOB field and no automatic-conversion mechanism of any kind. Needs a decision: do we now collect DOB (a real change to the minimisation stance, needing its own POPIA look), or does "birthdate" in the new PRD actually just mean the existing age-band, described loosely?
-5. **Nested groups to arbitrary depth, or the fixed two levels already built?** The Schools feature already shipped (§22) is `schools → grades → classes → class_learners` — exactly two levels of grouping, chosen deliberately for simplicity. The new PRD wants **groups nested to any depth**, with an owner/manager assignable at every level, plus a **separate flat "tags" concept** layered across groups (e.g. "special needs," visibility TBD) — a materially bigger structure (the new PRD's own technical notes flag this as needing "ltree or a closure table"). Needs a decision: rebuild Schools' grouping as arbitrary-depth now, or is two fixed levels (school/grade/class) an acceptable permanent simplification, with "tags" handled separately or dropped?
-6. **School-created child consent: emailed at creation, or a code the school hands out?** What's built (§10.3, §22) has a teacher create a learner profile and generate a `handover_code` the *school* distributes however it likes (printed, texted, etc.) — nothing is emailed automatically. The new PRD specifies a different sequence: the school enters the **parent's email at creation time**, and the system **immediately emails a signed, single-use, expiring consent link** (via Resend) with an explicit "this isn't me" cancel option and an auto-delete window if the parent never responds. These are different workflows, not just an implementation detail — the new PRD's version requires the school to supply a parent email upfront (today's flow doesn't need one until handover) and requires Resend to exist. Needs a decision on which flow is correct before any school-consent code is touched again.
-7. **Resend as the email provider, replacing Supabase's own auth email.** Nothing in v0.3 or what's built assumes a dedicated email provider — the school-approval magic link built in §22.2 relies on **Supabase's own built-in `signInWithOtp` email**, specifically chosen so no email infrastructure had to be built. The new PRD makes **Resend the only sender of all outgoing email, including auth and 2FA** — a real new infrastructure dependency (API keys, SPF/DKIM/DMARC on a sending domain, reconfiguring Supabase's SMTP settings) that would also mean revisiting the just-built magic-link flow. Worth confirming this is wanted before it becomes a dependency of everything else (weekly/monthly parent reports, month-in-review, consent emails, family invites, auth/2FA).
+1. **Ads: once-off purchase, or recurring subscription? → Recurring, per the new PRD.** Supersedes v0.3 §12.5's R49-once-off (full new spec at §12.5). Not yet built either way — no payment integration exists — so this costs nothing to change now.
+2. **Is "Bookie" being renamed? → No. "Steadfast and constant."** The name stays permanently; any future rebrand is visual/brand style only. Recorded in §13.2.
+3. **Navigation: 4 tabs, 5, and where does the Library go? → Keep today's structure, with Settings promoted into the bottom nav as a 5th item.** Final nav: **Home / Library / Clubs / Explore / Settings** — matches a Figma reference supplied the same day. Library keeps its own slot (the new PRD's proposal to drop it was not adopted). "Family" does **not** get its own tab — it stays a feature inside Settings, as it already conceptually was. A future "Dashboard" (stats-only, per the new PRD's definition) is reached from Home via a small pill button with its own back-navigation, not a persistent nav tab — **the Dashboard page itself, and the Home/Dashboard content split, are not built yet**; today's single `/dashboard` route still serves both roles until that rebuild happens. **Implemented 2026-10-06:** `Layout.tsx`'s mobile bottom nav now has 5 items; the "Settings" entry was removed from the hamburger drawer (redundant with the bottom nav) and its notification badge moved to the new bottom-nav icon.
+4. **Age bands, or real birthdates? → Neither replaces the other.** The existing coarse `age_group` band stays the default, sufficient mechanism — **no date of birth is ever required.** A user may now optionally add their own DOB if they want to, but **it is never shared or shown to anyone**, including other family members, clubs or schools; nothing in the product depends on it existing. Recorded in §14.1. *(The DOB field itself isn't built yet — this just settles the policy question Q3/§18 partly raised; Q3's original "how do bands move up" question is still open, since an optional, unshared DOB can't be relied on as the general mechanism.)*
+5. **Nested groups to arbitrary depth, or the fixed two levels already built? → Arbitrary depth, adopting the new PRD's SAO/DH/tags model.** "The newly proposed structure is most adaptable and scalable." Confirmed safe to replace outright — **no schools are registered and no one has signed up yet**, so there's no migration risk. This is a substantial rebuild in its own right (§10.2 has the detail) and is queued as its own dedicated pass, not bundled into this round of changes.
+6. **School-created child consent: emailed at creation, or a code the school hands out? → Asked for a recommendation; recommending the new PRD's explicit, logged consent flow, as a hybrid with what's already minimal.** Reasoning: today's build (handover code, claimed later) has **no identity verification at all** — anyone holding the code can claim a profile, whether or not they're the child's parent — and **no consent record exists** until that claim happens, which is a weak position for a POPIA accountability review. The new PRD's flow (signed, single-use, expiring link; logged wording-version/timestamp/IP; revocable; auto-expiring if unanswered; a "not my child" integrity check) is the stronger pattern specifically because it creates an auditable consent record *before* meaningful processing, rather than deferring verification indefinitely. The one cost — collecting a parent's email before consent is captured — is a narrow, well-accepted "processing solely to request consent" basis, not a new minimisation problem, especially since the learner profile itself stays exactly as minimal as today (nickname + avatar only). **Recommendation accepted; not yet built** — sequenced after the Schools structure rebuild (#5), since the new consent flow attaches to whatever the new group shape turns out to be. Detail in §10.3.
+7. **Resend as the email provider? → Hold off for now.** "If Supabase can handle our initial requirements with minimal lag/latency we can manage like that for now." The consent flow above should reuse the same pattern already proven for school-admin approval: Supabase's own `signInWithOtp` as the delivery vehicle, with all real content (data journey, declaration, logging) on the landing page the link opens, not in the email body itself. Revisit if volume or latency become real problems. Detail in §10.8.
 
 ### 23.2 Area-by-area comparison
 
@@ -943,8 +983,24 @@ These are places where the new PRD appears to deliberately change a settled v0.3
 
 ### 23.3 Plan of action
 
-1. **Resolve §23.1's seven decisions with Janico before writing any more schema or screens against the new PRD.** Several (ads model, DOB, Resend, nested-group depth) each touch multiple areas below them — getting them wrong first means redoing real work, not just updating a document.
-2. **Once resolved, merge as v0.4**, following this file's own established pattern (a `§0.2`-style "changes from v0.3" table) rather than a line-by-line rewrite — most of v0.3 stands; the merge should touch exactly the sections §23.1 flags plus the net-new areas in §23.2.
-3. **Re-sequence §17's build order once merged.** Several new-PRD items are now higher-priority than their position in today's Phase 1–4 ordering would suggest — multi-family membership and the Home/timer rebuild in particular touch enough of the app that they're foundational, closer in character to Phase 0 than to a later phase.
-4. **Start on the one thing every version of this PRD agrees on, independent of the open decisions:** the `reading_sessions`/re-reads table (§22.1 slice 1 / new PRD's `reads` table) — already the identified blocker for class reading mode, the Bookworm score's re-read counting, *and* now the new PRD's Home timer and read-aloud tagging. Nothing above changes its shape; it's safe to build regardless of how §23.1 resolves.
-5. **Flag the Schools nested-depth question (§23.1.5) as the most consequential "decide before touching code again" item specifically for Schools** — §22.1's slices 2–4 (class books, class reading mode, reports) would be built differently depending on the answer, so pausing that work until it's resolved avoids redoing it.
+All seven items were resolved by Janico on 2026-10-06 (§23.1) and merged into this file as **v0.4** (header, §0.3). What's actually done vs. still queued:
+
+**Done 2026-10-06** (§23.4 has the detail): nav restructure (Settings → 5th bottom-nav item), typography (Chiron GoRound TC / Inter). Both low-risk, fully specified, no open questions attached.
+
+**Documented but not yet built** (text-only changes to this file, no code): the new ads/subscription pricing (§12.5 — no payment integration exists yet to touch), the DOB-optional policy (§14.1 — no DOB field exists yet to add), the consent-flow recommendation (§10.3 — depends on the Schools rebuild below).
+
+**Still queued, in this order:**
+1. **`reading_sessions`/re-reads** (§22.1 slice 1 / the new PRD's `reads` table) — unaffected by anything in §23.1, safe to build any time, and blocks the most other things (class reading mode, Bookworm re-read scoring, the eventual Home timer). The natural next build task.
+2. **Schools: rebuild for arbitrary-depth nesting** (§10.2, §23.1.5) — big enough to need its own dedicated planning pass before code. Blocks resuming §22.1 slices 2–4 (class books, class reading mode, reports) and the new consent flow (§10.3), both of which would be built differently once this lands.
+3. **Multi-family membership** (§23.2) — not yet scheduled into §17's build order; foundational enough (touches every page using `useAuth()`) that it likely belongs closer to Phase 0 than wherever it would naturally fall as a late addition. Needs its own sequencing pass through §17 once Schools (above) is underway or done.
+4. **Home/Dashboard split** — not started; the pill-button nav decision (§23.1.3) assumes this exists, but today's single `/dashboard` route still does both jobs.
+5. **Payment integration** for the new subscription plans (§12.5) — provider still unchosen (§18 Q10); sequence after multi-family membership, since "primary family" needs to be a real concept first.
+
+### 23.4 Session log — decisions resolved, nav and typography (2026-10-06)
+
+Janico answered all seven §23.1 items in one message, plus supplied two Figma reference screens and a typography spec.
+
+- **Nav:** `src/pages/Layout.tsx`'s mobile bottom nav now has 5 items (`Home / Library / Clubs / Explore / Settings`), confirmed against the supplied Figma screenshot. The `Settings` entry was removed from the hamburger drawer (now redundant) and its `missingAgeGroups` notification badge moved from the hamburger-icon dot to the new bottom-nav Settings icon — the dot on the hamburger no longer made sense once Settings left the drawer.
+- **Typography:** `src/styles/fonts.css`'s Google Fonts import and `src/styles/theme.css`'s `--font-display`/`--font-sans` tokens changed from Fraunces/Nunito to **Chiron GoRound TC** (confirmed a real, free, variable Google Font, weights 200–900) and **Inter**. Only the font *names* changed — the existing `font-display`-utility-class / global-`body`-default mechanism was already correct and untouched. Verified in the compiled CSS output, not just visually assumed. `--font-mono` (DM Mono) wasn't mentioned in the brief and is unchanged.
+- Both changes are small, fully-specified, and low-risk, so built directly rather than queued — unlike the Schools rebuild and consent-flow work, which are large enough to need their own dedicated pass (§23.3).
+- **Not done:** the actual Dashboard page/pill-button (nothing exists yet for it to link to), the DOB field, the consent-flow schema/UI, and payment integration — all correctly sequenced into §23.3 rather than attempted alongside the small changes above.

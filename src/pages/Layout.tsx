@@ -154,9 +154,6 @@ export default function Layout() {
                 aria-label="Open menu"
               >
                 <Menu size={20} />
-                {missingAgeGroups && (
-                  <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-amber-400 border border-card" />
-                )}
               </button>
             </div>
           </div>
@@ -193,14 +190,8 @@ export default function Layout() {
               </button>
             </div>
 
-            {/* Nav items */}
+            {/* Nav items — Settings itself now lives in the bottom nav */}
             <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
-              <DrawerItem
-                icon={<Settings size={18} />}
-                label="Settings"
-                badge={missingAgeGroups}
-                onClick={() => { setDrawerOpen(false); navigate("/settings"); }}
-              />
               <DrawerItem
                 icon={<UserPlus size={18} />}
                 label="Invite a family member"
@@ -251,6 +242,7 @@ export default function Layout() {
             <NavItem to="/books"     icon={<BookMarked size={22} />}      label="Library" />
             <NavItem to="/clubs"     icon={<Users size={22} />}           label="Clubs" badge={hasClubNotifs} />
             <NavItem to="/explore"   icon={<Compass size={22} />}         label="Explore" />
+            <NavItem to="/settings"  icon={<Settings size={22} />}        label="Settings" badge={missingAgeGroups} />
           </div>
         </nav>
       )}

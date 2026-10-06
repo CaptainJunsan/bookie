@@ -2,8 +2,8 @@
 
 :root {
   --font-size: 16px;
-  --font-display: 'Fraunces', Georgia, serif;
-  --font-sans: 'Nunito', system-ui, sans-serif;
+  --font-display: 'Chiron GoRound TC', system-ui, sans-serif;
+  --font-sans: 'Inter', system-ui, sans-serif;
   --font-mono: 'DM Mono', monospace;
   --background: #FAF6EF;
   --foreground: #1C110A;
