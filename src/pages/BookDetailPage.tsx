@@ -15,6 +15,7 @@ interface BookWithFull {
   book: Book;
   progressByMember: Record<string, ReadingProgress>;
   ratingByMember: Record<string, Rating>;
+  completionsByMember: Record<string, number>; // reading_sessions.is_completion count — includes re-reads
 }
 
 export default function BookDetailPage() {
@@ -48,10 +49,11 @@ export default function BookDetailPage() {
     setLoading(true);
     setData(null);
     try {
-      const [bookRes, progressRes, ratingsRes] = await Promise.all([
+      const [bookRes, progressRes, ratingsRes, sessionsRes] = await Promise.all([
         supabase.from("books").select("*").eq("id", id).single(),
         supabase.from("reading_progress").select("*").eq("book_id", id),
         supabase.from("ratings").select("*").eq("book_id", id),
+        supabase.from("reading_sessions").select("member_id").eq("book_id", id).eq("is_completion", true),
       ]);
 
       if (!bookRes.data) { navigate("/books"); return; }
@@ -62,7 +64,12 @@ export default function BookDetailPage() {
       const ratingByMember: Record<string, Rating> = {};
       (ratingsRes.data as Rating[] || []).forEach((r) => { ratingByMember[r.member_id] = r; });
 
-      setData({ book: bookRes.data as Book, progressByMember, ratingByMember });
+      const completionsByMember: Record<string, number> = {};
+      (sessionsRes.data ?? []).forEach((s: { member_id: string }) => {
+        completionsByMember[s.member_id] = (completionsByMember[s.member_id] ?? 0) + 1;
+      });
+
+      setData({ book: bookRes.data as Book, progressByMember, ratingByMember, completionsByMember });
 
       const inputs: Record<string, string> = {};
       Object.entries(progressByMember).forEach(([mid, prog]) => { inputs[mid] = String(prog.current_page); });
@@ -75,10 +82,27 @@ export default function BookDetailPage() {
     }
   }
 
+  // Logs a completion session (PRD §6.2) — the append-only record that
+  // "books finished" counts are now computed from. Called whenever a book
+  // is marked finished, and again any time it's re-read, so re-reads count.
+  async function logCompletionSession(memberId: string) {
+    if (!id || !member) return;
+    await supabase.from("reading_sessions").insert({
+      member_id: memberId,
+      book_id: id,
+      started_at: new Date().toISOString(),
+      ended_at: new Date().toISOString(),
+      source: "manual",
+      is_completion: true,
+      logged_by_member_id: member.id,
+    });
+  }
+
   async function updateProgress(memberId: string, status: ReadingStatus, page?: number) {
     if (!id) return;
     setUpdatingMember(memberId);
     const existing = data?.progressByMember[memberId];
+    const wasAlreadyFinished = existing?.status === "finished";
     const updates: Partial<ReadingProgress> = {
       status,
       current_page: page ?? existing?.current_page ?? 0,
@@ -91,8 +115,22 @@ export default function BookDetailPage() {
     } else {
       await supabase.from("reading_progress").insert({ book_id: id, member_id: memberId, ...updates });
     }
+    // Only log a session on the transition *into* finished — re-reads after
+    // that use the dedicated "Read it again" action below, since clicking an
+    // already-selected status button here is a no-op in the UI.
+    if (status === "finished" && !wasAlreadyFinished) {
+      await logCompletionSession(memberId);
+    }
     await loadBook();
     setUpdatingMember(null);
+  }
+
+  async function logReReadForMember(memberId: string) {
+    setUpdatingMember(memberId);
+    await logCompletionSession(memberId);
+    await loadBook();
+    setUpdatingMember(null);
+    toast.success("Nice — logged as another read!");
   }
 
   async function updatePageForMember(memberId: string) {
@@ -221,7 +259,7 @@ export default function BookDetailPage() {
     return <div className="flex items-center justify-center h-64"><span className="text-4xl animate-bounce">📚</span></div>;
   }
 
-  const { book, progressByMember, ratingByMember } = data;
+  const { book, progressByMember, ratingByMember, completionsByMember } = data;
   const myRating = ratingByMember[member?.id ?? ""];
 
   // Has the reviewer posted a review (rating or text)
@@ -319,6 +357,7 @@ export default function BookDetailPage() {
             {allMembers.map((m: FamilyMember) => {
               const prog = progressByMember[m.id];
               const isFinished = prog?.status === "finished";
+              const completions = completionsByMember[m.id] ?? 0;
               const pct = book.page_count && prog
                 ? (isFinished ? 100 : Math.min(99, Math.round((prog.current_page / book.page_count) * 100)))
                 : null;
@@ -335,7 +374,10 @@ export default function BookDetailPage() {
                         {m.nickname}
                         {isMe && <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full font-bold ml-1">you</span>}
                       </p>
-                      <p className="text-xs text-muted-foreground capitalize">{prog ? STATUS_LABELS[prog.status] : "Not started"}</p>
+                      <p className="text-xs text-muted-foreground capitalize">
+                        {prog ? STATUS_LABELS[prog.status] : "Not started"}
+                        {completions > 1 && ` · read ${completions} times`}
+                      </p>
                     </div>
                     {pct !== null && !isFinished && (
                       <span className="text-sm font-bold" style={{ color: m.color }}>{pct}%</span>
@@ -388,6 +430,15 @@ export default function BookDetailPage() {
                             {isUpdating ? "..." : "Save"}
                           </button>
                         </div>
+                      )}
+                      {isFinished && (
+                        <button
+                          onClick={() => logReReadForMember(m.id)}
+                          disabled={isUpdating}
+                          className="w-full py-2 rounded-xl border border-dashed border-primary/30 text-primary text-xs font-semibold hover:bg-primary/5 transition-colors disabled:opacity-60"
+                        >
+                          {isUpdating ? "..." : "📖 Read it again"}
+                        </button>
                       )}
                     </>
                   )}

@@ -746,7 +746,7 @@ Each phase ends with something testable. Design (§5.8) runs in parallel from ph
 **Phase 0: Foundations**
 1. ~~Confirm or migrate the Supabase project to `eu-west-1`; set `vercel.json` to `dub1`~~ — **Done 2026-09-23** (§15).
 2. Move all text into translation files; set up English, Afrikaans and isiXhosa with English fallback (§9).
-3. `reading_sessions` and re-read support (§6.2).
+3. ~~`reading_sessions` and re-read support~~ — **done 2026-10-06** (§6.2, see §24).
 4. New age groups and migration; `immersion_enabled` replaces `is_child_mode` (§2.2, §5.2).
 5. PWA: manifest, service worker, offline storage, offline session queue (§8).
 6. Configurable base URL (§15.2).
@@ -908,7 +908,7 @@ Built per §10, adopting §10.2's recommendation (a new top-level `schools` enti
 | # | Slice | Depends on | Notes |
 |---|---|---|---|
 | 0 | **QA the foundation** — click through create school → grade → class → school-created learner → handover claim → staff invite in a real browser; fix whatever breaks, including the Roster pre-select rough edge above. | Nothing | Blocking. Bugs here compound into everything below. |
-| 1 | **`reading_sessions` + re-reads** (PRD §6.2, listed as Phase 0 item 3 but never actually built) | Nothing | Not a Schools item at all, but §10.4's "class reading mode" and the Bookworm score's re-read counting both assume this table exists. Building Schools' reading features before this exists means redoing them once it lands — do this first. |
+| ~~1~~ | ~~**`reading_sessions` + re-reads**~~ — **done 2026-10-06**, see §24 | Nothing | Schools' class reading mode (slice 2 below) can now build on this. |
 | 2 | **Class books + individual progress** — `class_books` (mirrors `club_books`) and `class_reading_progress` (mirrors `club_reading_progress`, but keyed to `class_learners.id` rather than `family_members.id`, since a school-created learner may not be claimed yet). Teacher UI to add a book to a class; each learner's own progress view. | Slice 1 (progress rows should write through to `reading_sessions`, not just a page number, to avoid a second migration later) | The "individual" half of §10.4 — no bulk/class-reading-mode UI yet. |
 | 3 | **Class reading mode** — the one-device, one-tap "we read this together" bulk action for a shared classroom device, logging a session for every learner in the class at once. No ads ever on this screen (§12.2). | Slice 2 | The distinctly *classroom* half of §10.4. |
 | 4 | **Reports** (§10.5) — a `class_learner_report` RPC mirroring `club_member_report`/`club_books_report`; a Reports view scoped teacher-own-classes / admin-all-classes / parent-own-child-only, reusing `ClubDetailPage.tsx`'s CSV-export pattern. | Slices 1–3 (reports are only as good as the underlying session data) | |
@@ -1004,3 +1004,19 @@ Janico answered all seven §23.1 items in one message, plus supplied two Figma r
 - **Typography:** `src/styles/fonts.css`'s Google Fonts import and `src/styles/theme.css`'s `--font-display`/`--font-sans` tokens changed from Fraunces/Nunito to **Chiron GoRound TC** (confirmed a real, free, variable Google Font, weights 200–900) and **Inter**. Only the font *names* changed — the existing `font-display`-utility-class / global-`body`-default mechanism was already correct and untouched. Verified in the compiled CSS output, not just visually assumed. `--font-mono` (DM Mono) wasn't mentioned in the brief and is unchanged.
 - Both changes are small, fully-specified, and low-risk, so built directly rather than queued — unlike the Schools rebuild and consent-flow work, which are large enough to need their own dedicated pass (§23.3).
 - **Not done:** the actual Dashboard page/pill-button (nothing exists yet for it to link to), the DOB field, the consent-flow schema/UI, and payment integration — all correctly sequenced into §23.3 rather than attempted alongside the small changes above.
+
+---
+
+## 24. Session log — reading_sessions, re-reads (2026-10-06)
+
+Built per §6.2 / §23.3 item 1 — the top-priority queued item, agreed by every version of the PRD, unblocked by nothing else.
+
+**Schema** (`supabase/reading_sessions_schema.sql`, applied to production `rnyatweedvzmeubqvjbo`): `reading_sessions` — one row per read-event (`member_id`, `book_id`, `started_at`/`ended_at`/`duration_seconds`, `source` ('manual'|'reader'|'class'), `is_read_aloud`, `is_completion`, `logged_by_member_id`). RLS mirrors `reading_progress` exactly (family-scoped via `get_my_family_id()`). **Backfilled** from existing `reading_progress.status = 'finished'` rows so "books finished" counts computed from this table going forward are continuous with history — **43 real rows backfilled**, confirming this app already has real family data in production (unlike Schools, which had none); this was treated with the same care as any other production-data migration. *(Note for next time in this environment: the migration tool declined a combined `DROP TABLE ... ; CREATE TABLE ... ; CREATE POLICY ...` batch twice with no error detail — splitting into separate `CREATE TABLE` → `ALTER TABLE ADD COLUMN` → `ALTER COLUMN SET NOT NULL` → indexes → `ENABLE RLS` → one `CREATE POLICY` per policy → backfill `INSERT`, each as its own call, went through cleanly. Likely the `DROP TABLE` specifically triggers a confirmation gate that silently declines rather than prompting in this non-interactive session — avoid combining `DROP` with other DDL in one call here.)*
+
+**UI:** `BookDetailPage.tsx` now logs a completion session automatically whenever a book transitions to "Finished", and gained a **"📖 Read it again"** button (shown once already finished) that logs another completion session without disturbing `reading_progress` — this is the re-read mechanic. The per-member status line now shows "· read N times" once N > 1. **Scoring updated to match:** `ReaderProfileSheet.tsx`'s `booksFinished` stat (feeding the Bookworm score) and `DashboardPage.tsx`'s family-wide finished totals, per-member counts, Star Reader determination, and the signed-in member's own score now all count from `reading_sessions.is_completion` rows rather than distinct `reading_progress.status = 'finished'` rows — satisfying §6.2's acceptance criterion that re-reads count toward totals and the Bookworm score. Both components fall back to the old distinct-count method if a session fetch ever comes back empty, so a transient fetch issue can't zero out someone's stats.
+
+**Deliberately not done this pass, to keep the change bounded:**
+- **`milestones.ts` is unchanged** — milestone threshold-crossing (10/20/50/100 books) still reads from `reading_progress`, not `reading_sessions`, so re-reads don't yet trigger new milestone celebrations. The acceptance criterion "milestones include re-reads" (§6.2) is **not yet met** — flagging explicitly rather than overclaiming.
+- **`totalPagesRead` is unchanged** — still one page-count per distinct finished book, not multiplied by completion count. A re-read doesn't currently add to the pages-read total.
+- **No logging UI beyond BookDetailPage** — no timer, no duration picker (5/10/15/30/60 min), no manual start/end time entry. Those are the Home-page rebuild's job (§23.3 item 4), which this table was built to support, not to pre-empt.
+- **`is_read_aloud` and `source` ('reader'/'class') are schema-only** — nothing in the app sets them yet; both wait on the in-app reader (§7) and class reading mode (§22.1 slice 3) respectively.

@@ -73,7 +73,7 @@ export default function ReaderProfileSheet({ member, isBestReader = false, onClo
     setLoading(true);
     setStats(null);
     try {
-      const [progressRes, ratingsRes] = await Promise.all([
+      const [progressRes, ratingsRes, sessionsRes] = await Promise.all([
         supabase
           .from("reading_progress")
           .select("*, books(*)")
@@ -82,10 +82,18 @@ export default function ReaderProfileSheet({ member, isBestReader = false, onClo
           .from("ratings")
           .select("*")
           .eq("member_id", memberId),
+        // Completion count, not distinct books — a re-read logs another row
+        // here (PRD §6.2), so this is the canonical "books finished" count.
+        supabase
+          .from("reading_sessions")
+          .select("id", { count: "exact", head: true })
+          .eq("member_id", memberId)
+          .eq("is_completion", true),
       ]);
 
       const rows = (progressRes.data as Array<ReadingProgress & { books: Book }>) ?? [];
       const ratings = (ratingsRes.data as Rating[]) ?? [];
+      const completionCount = sessionsRes.count ?? 0;
 
       const finished = rows.filter((r) => r.status === "finished");
       const reading  = rows.filter((r) => r.status === "reading");
@@ -103,7 +111,10 @@ export default function ReaderProfileSheet({ member, isBestReader = false, onClo
           : null;
 
       setStats({
-        booksFinished: finished.length,
+        // Falls back to distinct-finished-books count for anyone whose
+        // history predates reading_sessions (shouldn't happen post-backfill,
+        // but avoids ever showing 0 for a member session fetch hiccups on).
+        booksFinished: completionCount || finished.length,
         booksReading: reading.length,
         booksWantToRead: want.length,
         totalPagesRead,

@@ -168,6 +168,20 @@ export interface ReadingProgress {
   updated_at: string;
 }
 
+export interface ReadingSession {
+  id: string;
+  member_id: string;
+  book_id: string;
+  started_at: string;
+  ended_at: string | null;
+  duration_seconds: number | null;
+  source: "manual" | "reader" | "class";
+  is_read_aloud: boolean;
+  is_completion: boolean;
+  logged_by_member_id: string | null;
+  created_at: string;
+}
+
 export interface Rating {
   id: string;
   book_id: string;

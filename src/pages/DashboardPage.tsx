@@ -124,15 +124,22 @@ export default function DashboardPage() {
 
   async function loadData() {
     setLoading(true);
-    const [booksRes, progressRes, ratingsRes] = await Promise.all([
+    const [booksRes, progressRes, ratingsRes, sessionsRes] = await Promise.all([
       supabase.from("books").select("*").eq("family_id", family!.id).order("created_at", { ascending: false }).limit(20),
       supabase.from("reading_progress").select("*").in("member_id", allMembers.map((m) => m.id)),
       supabase.from("ratings").select("*").in("member_id", allMembers.map((m) => m.id)),
+      // Completion count per member, not distinct books — re-reads log another
+      // row here (PRD §6.2), so this is the canonical "books finished" source.
+      supabase.from("reading_sessions").select("member_id").in("member_id", allMembers.map((m) => m.id)).eq("is_completion", true),
     ]);
 
     const books = (booksRes.data as Book[]) || [];
     const progress = (progressRes.data as ReadingProgress[]) || [];
     const ratings = (ratingsRes.data as Rating[]) || [];
+    const completionsByMember: Record<string, number> = {};
+    (sessionsRes.data ?? []).forEach((s: { member_id: string }) => {
+      completionsByMember[s.member_id] = (completionsByMember[s.member_id] ?? 0) + 1;
+    });
 
     const readingBookIds = new Set(progress.filter((p) => p.status === "reading").map((p) => p.book_id));
     const recent = books.slice(0, 6).map((book) => ({
@@ -150,8 +157,14 @@ export default function DashboardPage() {
       }));
 
     const finishedProgress = progress.filter((p) => p.status === "finished");
+    // Falls back to distinct-finished-books count per member if a session
+    // fetch ever comes back empty — avoids ever showing 0 for someone whose
+    // history predates reading_sessions (shouldn't happen post-backfill).
     const finishedByMember = allMembers
-      .map((m) => ({ member: m, count: finishedProgress.filter((p) => p.member_id === m.id).length }))
+      .map((m) => ({
+        member: m,
+        count: completionsByMember[m.id] || finishedProgress.filter((p) => p.member_id === m.id).length,
+      }))
       .sort((a, b) => b.count - a.count);
 
     const topCount = finishedByMember[0]?.count ?? 0;
@@ -161,11 +174,12 @@ export default function DashboardPage() {
     const totalPages = progress.reduce((acc, p) => acc + p.current_page, 0);
     const finishedCountByMember: Record<string, number> = {};
     finishedByMember.forEach(({ member: m, count }) => { finishedCountByMember[m.id] = count; });
+    const familyFinishedTotal = finishedByMember.reduce((acc, x) => acc + x.count, 0);
 
     // My own Bookworm score, same inputs/formula as ReaderProfileSheet.
     const myProgress = progress.filter((p) => p.member_id === member?.id);
     const myBookwormScore = bookwormScore({
-      booksFinished: myProgress.filter((p) => p.status === "finished").length,
+      booksFinished: finishedCountByMember[member?.id ?? ""] ?? 0,
       totalPagesRead: myProgress.reduce((acc, p) => acc + p.current_page, 0),
       reviewsWritten: ratings.filter((r) => r.member_id === member?.id && r.review).length,
       booksReading: myProgress.filter((p) => p.status === "reading").length,
@@ -174,7 +188,7 @@ export default function DashboardPage() {
 
     setStats({
       totalBooks: books.length,
-      booksFinished: finishedProgress.length,
+      booksFinished: familyFinishedTotal,
       totalPages,
       bestReaders,
       bestReaderCount: topCount,
