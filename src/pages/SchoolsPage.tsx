@@ -49,7 +49,7 @@ export default function SchoolsPage() {
     try {
       const [staffRes, learnerRes] = await Promise.all([
         supabase.from("school_members").select("school_id, role").in("family_member_id", myMemberIds),
-        supabase.from("class_learners").select("school_id").in("family_member_id", myMemberIds),
+        supabase.from("learners").select("school_id").in("family_member_id", myMemberIds),
       ]);
 
       const staffRows = staffRes.data ?? [];

@@ -6,12 +6,31 @@ import {
 } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../contexts/AuthContext";
-import type { School, SchoolMember, Grade, SchoolClass, ClassLearner, FamilyMember, SchoolRole } from "../lib/types";
+import type { School, SchoolMember, SchoolGroup, SchoolGroupKind, Learner, LearnerGroupMembership, FamilyMember, SchoolRole } from "../lib/types";
 import { toast } from "sonner";
 import { APP_URL } from "../lib/shareCard";
 import { cn } from "../app/components/ui/utils";
 
-type Tab = "grades" | "staff" | "roster";
+type Tab = "groups" | "staff" | "roster";
+
+const GROUP_KINDS: SchoolGroupKind[] = ["phase", "grade", "class", "group"];
+
+function pathLabel(groupId: string, groups: SchoolGroup[]): string {
+  const names: string[] = [];
+  let current = groups.find((g) => g.id === groupId);
+  while (current) {
+    names.unshift(current.name);
+    current = current.parent_id ? groups.find((g) => g.id === current!.parent_id) : undefined;
+  }
+  return names.join(" · ");
+}
+
+function flattenGroups(groups: SchoolGroup[], parentId: string | null = null, depth = 0): Array<{ group: SchoolGroup; depth: number }> {
+  return groups
+    .filter((g) => g.parent_id === parentId)
+    .sort((a, b) => a.order_index - b.order_index)
+    .flatMap((g) => [{ group: g, depth }, ...flattenGroups(groups, g.id, depth + 1)]);
+}
 
 export default function SchoolDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -20,13 +39,12 @@ export default function SchoolDetailPage() {
 
   const [school, setSchool] = useState<School | null>(null);
   const [myRole, setMyRole] = useState<SchoolRole | null>(null);
-  const [myTeachingClassIds, setMyTeachingClassIds] = useState<string[]>([]);
-  const [grades, setGrades] = useState<Grade[]>([]);
-  const [classes, setClasses] = useState<SchoolClass[]>([]);
+  const [myStaffGroupIds, setMyStaffGroupIds] = useState<string[]>([]);
+  const [groups, setGroups] = useState<SchoolGroup[]>([]);
   const [staff, setStaff] = useState<Array<SchoolMember & { family_member?: FamilyMember }>>([]);
-  const [learnersByClass, setLearnersByClass] = useState<Record<string, ClassLearner[]>>({});
+  const [learnersByGroup, setLearnersByGroup] = useState<Record<string, Learner[]>>({});
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<Tab>("grades");
+  const [tab, setTab] = useState<Tab>("groups");
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
 
   const isAdmin = myRole === "admin";
@@ -39,30 +57,35 @@ export default function SchoolDetailPage() {
     if (!id) return;
     setLoading(true);
     try {
-      const [schoolRes, myStaffRes, gradesRes, classesRes, staffRes] = await Promise.all([
+      const [schoolRes, myStaffRes, groupsRes, staffRes, staffGroupIdsRes] = await Promise.all([
         supabase.from("schools").select("*").eq("id", id).single(),
         supabase.from("school_members").select("*").eq("school_id", id).in("family_member_id", myMemberIds),
-        supabase.from("grades").select("*").eq("school_id", id).order("order_index"),
-        supabase.from("classes").select("*").eq("school_id", id),
+        supabase.from("school_groups").select("*").eq("school_id", id).order("order_index"),
         supabase.from("school_members").select("*, family_member:family_members(*)").eq("school_id", id),
+        supabase.rpc("get_my_staff_group_ids"),
       ]);
 
       setSchool(schoolRes.data as School);
       const myRows = myStaffRes.data ?? [];
       setMyRole(myRows.some((r) => r.role === "admin") ? "admin" : myRows.length ? "teacher" : null);
-      setMyTeachingClassIds(myRows.filter((r) => r.class_id).map((r) => r.class_id));
-      setGrades((gradesRes.data as Grade[]) ?? []);
-      setClasses((classesRes.data as SchoolClass[]) ?? []);
+      setGroups((groupsRes.data as SchoolGroup[]) ?? []);
       setStaff((staffRes.data as Array<SchoolMember & { family_member?: FamilyMember }>) ?? []);
+      setMyStaffGroupIds((staffGroupIdsRes.data as string[]) ?? []);
 
-      const classIds = (classesRes.data ?? []).map((c) => c.id);
-      if (classIds.length) {
-        const { data: learners } = await supabase.from("class_learners").select("*").in("class_id", classIds);
-        const grouped: Record<string, ClassLearner[]> = {};
-        (learners as ClassLearner[] ?? []).forEach((l) => {
-          (grouped[l.class_id] ??= []).push(l);
+      const groupIds = (groupsRes.data ?? []).map((g) => g.id);
+      if (groupIds.length) {
+        const { data: memberships } = await supabase
+          .from("learner_group_memberships")
+          .select("group_id, learner:learners(*)")
+          .in("group_id", groupIds);
+        const grouped: Record<string, Learner[]> = {};
+        (memberships as Array<{ group_id: string; learner: Learner }> ?? []).forEach((m) => {
+          if (!m.learner) return;
+          (grouped[m.group_id] ??= []).push(m.learner);
         });
-        setLearnersByClass(grouped);
+        setLearnersByGroup(grouped);
+      } else {
+        setLearnersByGroup({});
       }
     } finally {
       setLoading(false);
@@ -108,7 +131,7 @@ export default function SchoolDetailPage() {
         </div>
         <div className="max-w-2xl mx-auto px-4 flex gap-1 border-t border-border">
           {([
-            { key: "grades", label: "Grades & Classes", icon: <GraduationCap size={14} /> },
+            { key: "groups", label: "Groups", icon: <GraduationCap size={14} /> },
             { key: "staff", label: "Staff", icon: <Users size={14} /> },
             { key: "roster", label: "Roster", icon: <ClipboardList size={14} /> },
           ] as { key: Tab; label: string; icon: React.ReactNode }[]).map((t) => (
@@ -131,7 +154,7 @@ export default function SchoolDetailPage() {
           <div className="mb-5 p-4 bg-amber-50 border border-amber-200 rounded-2xl">
             <p className="text-sm font-bold text-amber-800">Application under review</p>
             <p className="text-xs text-amber-700 mt-1 leading-relaxed">
-              We're verifying {school.name} before it goes live — grades, classes and staff invites unlock once a
+              We're verifying {school.name} before it goes live — groups and staff invites unlock once a
               super admin approves it. We'll email {school.applicant_email ?? "you"} when that happens.
             </p>
           </div>
@@ -144,12 +167,11 @@ export default function SchoolDetailPage() {
             </p>
           </div>
         )}
-        {tab === "grades" && (
-          <GradesTab
+        {tab === "groups" && (
+          <GroupsTab
             schoolId={school.id}
             isAdmin={isAdmin && school.status === "approved"}
-            grades={grades}
-            classes={classes}
+            groups={groups}
             copiedCode={copiedCode}
             onCopy={copyToClipboard}
             onReload={load}
@@ -161,8 +183,7 @@ export default function SchoolDetailPage() {
             schoolId={school.id}
             isAdmin={isAdmin && school.status === "approved"}
             staff={staff}
-            classes={classes}
-            grades={grades}
+            groups={groups}
             copiedCode={copiedCode}
             onCopy={copyToClipboard}
             onReload={load}
@@ -170,12 +191,11 @@ export default function SchoolDetailPage() {
         )}
         {tab === "roster" && (
           <RosterTab
-            classes={classes}
-            grades={grades}
-            learnersByClass={learnersByClass}
+            groups={groups}
+            learnersByGroup={learnersByGroup}
             isAdmin={isAdmin && school.status === "approved"}
             isStaff={isStaff}
-            myTeachingClassIds={myTeachingClassIds}
+            myStaffGroupIds={myStaffGroupIds}
             schoolId={school.id}
             copiedCode={copiedCode}
             onCopy={copyToClipboard}
@@ -187,65 +207,115 @@ export default function SchoolDetailPage() {
   );
 }
 
-// ─── Grades & Classes ───────────────────────────────────────────────────────
+// ─── Groups (arbitrary-depth tree) ──────────────────────────────────────────
 
-function GradesTab({
-  schoolId, isAdmin, grades, classes, copiedCode, onCopy, onReload, onOpenRoster,
+function GroupsTab({
+  schoolId, isAdmin, groups, copiedCode, onCopy, onReload, onOpenRoster,
 }: {
-  schoolId: string; isAdmin: boolean; grades: Grade[]; classes: SchoolClass[];
+  schoolId: string; isAdmin: boolean; groups: SchoolGroup[];
   copiedCode: string | null; onCopy: (text: string, key: string) => void; onReload: () => void;
   onOpenRoster: () => void;
 }) {
-  const [addingGrade, setAddingGrade] = useState(false);
-  const [newGradeName, setNewGradeName] = useState("");
-  const [addingClassFor, setAddingClassFor] = useState<string | null>(null);
-  const [newClassName, setNewClassName] = useState("");
+  const [addingChildFor, setAddingChildFor] = useState<string | null>("root");
+  const [newName, setNewName] = useState("");
+  const [newKind, setNewKind] = useState<SchoolGroupKind>("group");
   const [saving, setSaving] = useState(false);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
-  const [confirmDeleteGrade, setConfirmDeleteGrade] = useState<string | null>(null);
-  const [confirmDeleteClass, setConfirmDeleteClass] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
-  async function addGrade() {
-    if (!newGradeName.trim()) return;
+  async function addGroup(parentId: string | null) {
+    if (!newName.trim()) return;
     setSaving(true);
-    const { error } = await supabase.from("grades").insert({
-      school_id: schoolId, name: newGradeName.trim(), order_index: grades.length,
+    const siblingCount = groups.filter((g) => g.parent_id === parentId).length;
+    const { error } = await supabase.from("school_groups").insert({
+      school_id: schoolId, parent_id: parentId, name: newName.trim(), kind: newKind, order_index: siblingCount,
     });
     setSaving(false);
-    if (error) { toast.error("Could not add grade"); return; }
-    setNewGradeName(""); setAddingGrade(false);
+    if (error) { toast.error("Could not add group"); return; }
+    setNewName(""); setNewKind("group"); setAddingChildFor(null);
     onReload();
   }
 
-  async function addClass(gradeId: string) {
-    if (!newClassName.trim()) return;
-    setSaving(true);
-    const { error } = await supabase.from("classes").insert({
-      school_id: schoolId, grade_id: gradeId, name: newClassName.trim(),
-    });
-    setSaving(false);
-    if (error) { toast.error("Could not add class"); return; }
-    setNewClassName(""); setAddingClassFor(null);
+  async function deleteGroup(groupId: string) {
+    await supabase.from("school_groups").delete().eq("id", groupId);
+    setConfirmDelete(null);
     onReload();
   }
 
-  async function deleteGrade(gradeId: string) {
-    await supabase.from("grades").delete().eq("id", gradeId);
-    setConfirmDeleteGrade(null);
-    onReload();
+  function renderNode(group: SchoolGroup, depth: number) {
+    const children = groups.filter((g) => g.parent_id === group.id).sort((a, b) => a.order_index - b.order_index);
+    const isOpen = expanded[group.id] ?? true;
+
+    return (
+      <div key={group.id} className="bg-card border border-border rounded-2xl overflow-hidden" style={{ marginLeft: depth * 12 }}>
+        <div className="flex items-center justify-between px-4 py-3">
+          <button
+            onClick={() => setExpanded((e) => ({ ...e, [group.id]: !isOpen }))}
+            className="flex items-center gap-2 flex-1 min-w-0 text-left hover:opacity-80"
+          >
+            {isOpen ? <ChevronDown size={14} className="text-muted-foreground shrink-0" /> : <ChevronRight size={14} className="text-muted-foreground shrink-0" />}
+            <span className="font-display font-bold text-sm truncate">{group.name}</span>
+            <span className="text-[10px] uppercase tracking-wide text-muted-foreground shrink-0">{group.kind}</span>
+          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={() => onCopy(`${APP_URL}/join/${group.join_code}`, `group-${group.id}`)}
+              className="flex items-center gap-1 text-[11px] text-school font-semibold hover:underline"
+            >
+              <KeyRound size={11} /> {group.join_code}
+              {copiedCode === `group-${group.id}` ? <Check size={11} /> : <Copy size={11} />}
+            </button>
+            <button onClick={onOpenRoster} className="text-muted-foreground hover:text-foreground">
+              <ClipboardList size={13} />
+            </button>
+            {isAdmin && (
+              confirmDelete === group.id ? (
+                <div className="flex items-center gap-1">
+                  <button onClick={() => deleteGroup(group.id)} className="text-[11px] font-bold text-destructive px-2 py-1 rounded-lg bg-destructive/10 hover:bg-destructive/20">Delete</button>
+                  <button onClick={() => setConfirmDelete(null)} className="text-[11px] font-semibold text-muted-foreground px-2 py-1 rounded-lg bg-muted">Cancel</button>
+                </div>
+              ) : (
+                <button onClick={() => setConfirmDelete(group.id)} className="text-muted-foreground hover:text-destructive p-1">
+                  <Trash2 size={13} />
+                </button>
+              )
+            )}
+          </div>
+        </div>
+
+        {isOpen && (
+          <div className="pl-4 pr-4 pb-4 space-y-2">
+            {children.map((c) => renderNode(c, depth + 1))}
+
+            {isAdmin && (
+              addingChildFor === group.id ? (
+                <AddGroupForm
+                  newName={newName} setNewName={setNewName} newKind={newKind} setNewKind={setNewKind}
+                  saving={saving} onSave={() => addGroup(group.id)}
+                  onCancel={() => { setAddingChildFor(null); setNewName(""); }}
+                />
+              ) : (
+                <button
+                  onClick={() => setAddingChildFor(group.id)}
+                  className="w-full py-2 rounded-xl border-2 border-dashed border-border text-xs font-semibold text-muted-foreground hover:border-school hover:text-school transition-colors flex items-center justify-center gap-1.5"
+                >
+                  <Plus size={13} /> Add a group inside {group.name}
+                </button>
+              )
+            )}
+          </div>
+        )}
+      </div>
+    );
   }
 
-  async function deleteClass(classId: string) {
-    await supabase.from("classes").delete().eq("id", classId);
-    setConfirmDeleteClass(null);
-    onReload();
-  }
+  const roots = groups.filter((g) => g.parent_id === null).sort((a, b) => a.order_index - b.order_index);
 
-  if (grades.length === 0 && !isAdmin) {
+  if (roots.length === 0 && !isAdmin) {
     return (
       <div className="bg-card border border-border rounded-2xl px-5 py-10 text-center">
         <span className="text-4xl mb-3 block">📋</span>
-        <p className="font-semibold text-foreground mb-1">No grades set up yet</p>
+        <p className="font-semibold text-foreground mb-1">No groups set up yet</p>
         <p className="text-sm text-muted-foreground">Ask a school admin to add grades and classes.</p>
       </div>
     );
@@ -253,113 +323,21 @@ function GradesTab({
 
   return (
     <div className="space-y-3">
-      {grades.map((grade) => {
-        const gradeClasses = classes.filter((c) => c.grade_id === grade.id);
-        const isOpen = expanded[grade.id] ?? true;
-        return (
-          <div key={grade.id} className="bg-card border border-border rounded-2xl overflow-hidden">
-            <button
-              onClick={() => setExpanded((e) => ({ ...e, [grade.id]: !isOpen }))}
-              className="w-full flex items-center justify-between px-4 py-3 hover:bg-muted/50 transition-colors"
-            >
-              <span className="font-display font-bold text-sm">{grade.name}</span>
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-muted-foreground">{gradeClasses.length} class{gradeClasses.length !== 1 ? "es" : ""}</span>
-                {isOpen ? <ChevronDown size={16} className="text-muted-foreground" /> : <ChevronRight size={16} className="text-muted-foreground" />}
-              </div>
-            </button>
-
-            {isOpen && (
-              <div className="px-4 pb-4 space-y-2">
-                {gradeClasses.map((c) => (
-                  <div key={c.id} className="flex items-center gap-3 p-3 bg-muted/50 rounded-xl">
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-sm">{c.name}</p>
-                      <button
-                        onClick={() => onCopy(`${APP_URL}/join/${c.join_code}`, `class-${c.id}`)}
-                        className="flex items-center gap-1.5 text-xs text-school font-semibold mt-0.5 hover:underline"
-                      >
-                        <KeyRound size={11} /> Code: {c.join_code}
-                        {copiedCode === `class-${c.id}` ? <Check size={11} /> : <Copy size={11} />}
-                      </button>
-                    </div>
-                    <button onClick={onOpenRoster} className="text-xs font-semibold text-muted-foreground hover:text-foreground flex items-center gap-1">
-                      Roster <ChevronRight size={13} />
-                    </button>
-                    {isAdmin && (
-                      confirmDeleteClass === c.id ? (
-                        <div className="flex items-center gap-1 shrink-0">
-                          <button onClick={() => deleteClass(c.id)} className="text-[11px] font-bold text-destructive px-2 py-1 rounded-lg bg-destructive/10 hover:bg-destructive/20">Delete</button>
-                          <button onClick={() => setConfirmDeleteClass(null)} className="text-[11px] font-semibold text-muted-foreground px-2 py-1 rounded-lg bg-muted">Cancel</button>
-                        </div>
-                      ) : (
-                        <button onClick={() => setConfirmDeleteClass(c.id)} className="text-muted-foreground hover:text-destructive p-1">
-                          <Trash2 size={13} />
-                        </button>
-                      )
-                    )}
-                  </div>
-                ))}
-
-                {isAdmin && (
-                  addingClassFor === grade.id ? (
-                    <div className="flex gap-2">
-                      <input
-                        autoFocus value={newClassName} onChange={(e) => setNewClassName(e.target.value)}
-                        placeholder="Class name (e.g. 4A)" maxLength={40}
-                        className="flex-1 px-3 py-2 rounded-lg bg-background border border-border text-sm outline-none focus:ring-2 focus:ring-ring"
-                      />
-                      <button onClick={() => addClass(grade.id)} disabled={saving} className="px-3 py-2 rounded-lg bg-school text-school-foreground text-xs font-bold">Add</button>
-                      <button onClick={() => { setAddingClassFor(null); setNewClassName(""); }} className="px-2 text-muted-foreground"><X size={16} /></button>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={() => setAddingClassFor(grade.id)}
-                      className="w-full py-2 rounded-xl border-2 border-dashed border-border text-xs font-semibold text-muted-foreground hover:border-school hover:text-school transition-colors flex items-center justify-center gap-1.5"
-                    >
-                      <Plus size={13} /> Add a class
-                    </button>
-                  )
-                )}
-
-                {isAdmin && (
-                  confirmDeleteGrade === grade.id ? (
-                    <div className="flex items-center gap-2">
-                      <span className="text-[11px] text-muted-foreground">Delete {grade.name} and all its classes?</span>
-                      <button onClick={() => deleteGrade(grade.id)} className="text-[11px] font-bold text-destructive px-2 py-1 rounded-lg bg-destructive/10 hover:bg-destructive/20">Delete</button>
-                      <button onClick={() => setConfirmDeleteGrade(null)} className="text-[11px] font-semibold text-muted-foreground px-2 py-1 rounded-lg bg-muted">Cancel</button>
-                    </div>
-                  ) : (
-                    <button onClick={() => setConfirmDeleteGrade(grade.id)} className="text-[11px] text-muted-foreground hover:text-destructive">
-                      Remove {grade.name}
-                    </button>
-                  )
-                )}
-              </div>
-            )}
-          </div>
-        );
-      })}
+      {roots.map((g) => renderNode(g, 0))}
 
       {isAdmin && (
-        addingGrade ? (
-          <div className="flex gap-2">
-            <input
-              autoFocus value={newGradeName} onChange={(e) => setNewGradeName(e.target.value)}
-              placeholder="Grade name (e.g. Grade 4)" maxLength={40}
-              className="flex-1 px-3 py-2.5 rounded-xl bg-card border border-border text-sm outline-none focus:ring-2 focus:ring-ring"
-            />
-            <button onClick={addGrade} disabled={saving} className="px-4 py-2.5 rounded-xl bg-school text-school-foreground text-sm font-bold">
-              {saving ? <Loader2 size={14} className="animate-spin" /> : "Add"}
-            </button>
-            <button onClick={() => { setAddingGrade(false); setNewGradeName(""); }} className="px-3 text-muted-foreground"><X size={18} /></button>
-          </div>
+        addingChildFor === "root" ? (
+          <AddGroupForm
+            newName={newName} setNewName={setNewName} newKind={newKind} setNewKind={setNewKind}
+            saving={saving} onSave={() => addGroup(null)}
+            onCancel={() => setNewName("")}
+          />
         ) : (
           <button
-            onClick={() => setAddingGrade(true)}
+            onClick={() => setAddingChildFor("root")}
             className="w-full py-3 rounded-2xl border-2 border-dashed border-border text-sm font-semibold text-muted-foreground hover:border-school hover:text-school transition-colors flex items-center justify-center gap-2"
           >
-            <Plus size={16} /> Add a grade
+            <Plus size={16} /> Add a top-level group
           </button>
         )
       )}
@@ -367,28 +345,57 @@ function GradesTab({
   );
 }
 
+function AddGroupForm({
+  newName, setNewName, newKind, setNewKind, saving, onSave, onCancel,
+}: {
+  newName: string; setNewName: (v: string) => void; newKind: SchoolGroupKind; setNewKind: (v: SchoolGroupKind) => void;
+  saving: boolean; onSave: () => void; onCancel: () => void;
+}) {
+  return (
+    <div className="flex gap-2">
+      <select
+        value={newKind} onChange={(e) => setNewKind(e.target.value as SchoolGroupKind)}
+        className="px-2 py-2.5 rounded-xl bg-background border border-border text-xs outline-none focus:ring-2 focus:ring-ring"
+      >
+        {GROUP_KINDS.map((k) => <option key={k} value={k}>{k}</option>)}
+      </select>
+      <input
+        autoFocus value={newName} onChange={(e) => setNewName(e.target.value)}
+        placeholder="Name (e.g. Grade 4, or 4A)" maxLength={40}
+        className="flex-1 px-3 py-2.5 rounded-xl bg-background border border-border text-sm outline-none focus:ring-2 focus:ring-ring"
+      />
+      <button onClick={onSave} disabled={saving} className="px-4 py-2.5 rounded-xl bg-school text-school-foreground text-sm font-bold">
+        {saving ? <Loader2 size={14} className="animate-spin" /> : "Add"}
+      </button>
+      <button onClick={onCancel} className="px-3 text-muted-foreground"><X size={18} /></button>
+    </div>
+  );
+}
+
 // ─── Staff ──────────────────────────────────────────────────────────────────
 
 function StaffTab({
-  schoolId, isAdmin, staff, classes, grades, copiedCode, onCopy, onReload,
+  schoolId, isAdmin, staff, groups, copiedCode, onCopy, onReload,
 }: {
   schoolId: string; isAdmin: boolean; staff: Array<SchoolMember & { family_member?: FamilyMember }>;
-  classes: SchoolClass[]; grades: Grade[]; copiedCode: string | null;
+  groups: SchoolGroup[]; copiedCode: string | null;
   onCopy: (text: string, key: string) => void; onReload: () => void;
 }) {
   const [showInvite, setShowInvite] = useState(false);
   const [inviteRole, setInviteRole] = useState<SchoolRole>("teacher");
-  const [inviteClassId, setInviteClassId] = useState<string>("");
+  const [inviteGroupId, setInviteGroupId] = useState<string>("");
   const [generatedCode, setGeneratedCode] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
+
+  const flatGroups = flattenGroups(groups);
 
   async function createInvite() {
     setSaving(true);
     const { data, error } = await supabase.from("school_staff_invites").insert({
       school_id: schoolId,
       role: inviteRole,
-      class_id: inviteRole === "teacher" && inviteClassId ? inviteClassId : null,
+      group_id: inviteRole === "teacher" && inviteGroupId ? inviteGroupId : null,
     }).select().single();
     setSaving(false);
     if (error) { toast.error("Could not create invite"); return; }
@@ -404,17 +411,9 @@ function StaffTab({
   function closeInvite() {
     setShowInvite(false);
     setGeneratedCode(null);
-    setInviteClassId("");
+    setInviteGroupId("");
     setInviteRole("teacher");
   }
-
-  const classLabel = (classId: string | null) => {
-    if (!classId) return null;
-    const c = classes.find((x) => x.id === classId);
-    if (!c) return null;
-    const g = grades.find((x) => x.id === c.grade_id);
-    return g ? `${g.name} · ${c.name}` : c.name;
-  };
 
   return (
     <div className="space-y-3">
@@ -425,7 +424,7 @@ function StaffTab({
             <p className="font-semibold text-sm truncate">{s.family_member?.nickname ?? "Unknown"}</p>
             <p className="text-xs text-muted-foreground">
               {s.role === "admin" ? "Admin" : "Teacher"}
-              {classLabel(s.class_id) ? ` · ${classLabel(s.class_id)}` : ""}
+              {s.group_id ? ` · ${pathLabel(s.group_id, groups)}` : ""}
             </p>
           </div>
           {isAdmin && (
@@ -474,18 +473,17 @@ function StaffTab({
                     ))}
                   </div>
                 </div>
-                {inviteRole === "teacher" && classes.length > 0 && (
+                {inviteRole === "teacher" && flatGroups.length > 0 && (
                   <div>
-                    <label className="block text-sm font-semibold mb-2">Class <span className="text-muted-foreground font-normal">(optional)</span></label>
+                    <label className="block text-sm font-semibold mb-2">Group <span className="text-muted-foreground font-normal">(optional)</span></label>
                     <select
-                      value={inviteClassId} onChange={(e) => setInviteClassId(e.target.value)}
+                      value={inviteGroupId} onChange={(e) => setInviteGroupId(e.target.value)}
                       className="w-full px-3 py-2.5 rounded-xl bg-background border border-border text-sm outline-none focus:ring-2 focus:ring-ring"
                     >
-                      <option value="">Not scoped to a class</option>
-                      {classes.map((c) => {
-                        const g = grades.find((x) => x.id === c.grade_id);
-                        return <option key={c.id} value={c.id}>{g ? `${g.name} · ${c.name}` : c.name}</option>;
-                      })}
+                      <option value="">Not scoped to a group</option>
+                      {flatGroups.map(({ group, depth }) => (
+                        <option key={group.id} value={group.id}>{"— ".repeat(depth)}{group.name}</option>
+                      ))}
                     </select>
                   </div>
                 )}
@@ -516,14 +514,15 @@ function StaffTab({
 // ─── Roster ─────────────────────────────────────────────────────────────────
 
 function RosterTab({
-  classes, grades, learnersByClass, isAdmin, isStaff, myTeachingClassIds, schoolId, copiedCode, onCopy, onReload,
+  groups, learnersByGroup, isAdmin, isStaff, myStaffGroupIds, schoolId, copiedCode, onCopy, onReload,
 }: {
-  classes: SchoolClass[]; grades: Grade[]; learnersByClass: Record<string, ClassLearner[]>;
-  isAdmin: boolean; isStaff: boolean; myTeachingClassIds: string[]; schoolId: string;
+  groups: SchoolGroup[]; learnersByGroup: Record<string, Learner[]>;
+  isAdmin: boolean; isStaff: boolean; myStaffGroupIds: string[]; schoolId: string;
   copiedCode: string | null; onCopy: (text: string, key: string) => void; onReload: () => void;
 }) {
-  const visibleClasses = isAdmin ? classes : classes.filter((c) => myTeachingClassIds.includes(c.id));
-  const [selectedClassId, setSelectedClassId] = useState<string>(visibleClasses[0]?.id ?? "");
+  const visibleGroups = isAdmin ? groups : groups.filter((g) => myStaffGroupIds.includes(g.id));
+  const flatVisible = flattenGroups(visibleGroups);
+  const [selectedGroupId, setSelectedGroupId] = useState<string>(flatVisible[0]?.group.id ?? "");
   const [showAddLearner, setShowAddLearner] = useState(false);
   const [learnerNickname, setLearnerNickname] = useState("");
   const [learnerAvatar, setLearnerAvatar] = useState("🧒");
@@ -531,47 +530,50 @@ function RosterTab({
   const [saving, setSaving] = useState(false);
   const [confirmRemoveLearner, setConfirmRemoveLearner] = useState<string | null>(null);
 
-  const selectedClass = classes.find((c) => c.id === selectedClassId);
-  const learners = learnersByClass[selectedClassId] ?? [];
+  const selectedGroup = groups.find((g) => g.id === selectedGroupId);
+  const learners = learnersByGroup[selectedGroupId] ?? [];
 
   if (!isStaff) {
     return (
       <div className="bg-card border border-border rounded-2xl px-5 py-10 text-center">
         <span className="text-4xl mb-3 block">👀</span>
         <p className="font-semibold text-foreground mb-1">Roster is for staff</p>
-        <p className="text-sm text-muted-foreground">Only teachers and admins can see a class roster.</p>
+        <p className="text-sm text-muted-foreground">Only teachers and admins can see a roster.</p>
       </div>
     );
   }
 
-  if (visibleClasses.length === 0) {
+  if (visibleGroups.length === 0) {
     return (
       <div className="bg-card border border-border rounded-2xl px-5 py-10 text-center">
         <span className="text-4xl mb-3 block">📋</span>
-        <p className="font-semibold text-foreground mb-1">No classes yet</p>
-        <p className="text-sm text-muted-foreground">{isAdmin ? "Add a grade and class first." : "You haven't been assigned to a class yet."}</p>
+        <p className="font-semibold text-foreground mb-1">No groups yet</p>
+        <p className="text-sm text-muted-foreground">{isAdmin ? "Add a group first." : "You haven't been assigned to a group yet."}</p>
       </div>
     );
   }
 
   async function addSchoolCreatedLearner() {
-    if (!learnerNickname.trim() || !selectedClassId) return;
+    if (!learnerNickname.trim() || !selectedGroupId) return;
     setSaving(true);
-    const { data, error } = await supabase.from("class_learners").insert({
-      class_id: selectedClassId,
+    const { data: learner, error } = await supabase.from("learners").insert({
       school_id: schoolId,
       nickname: learnerNickname.trim(),
       avatar_emoji: learnerAvatar,
       is_school_created: true,
     }).select().single();
+    if (error) { setSaving(false); toast.error("Could not add learner"); return; }
+    const { error: membershipError } = await supabase.from("learner_group_memberships").insert({
+      learner_id: learner.id, group_id: selectedGroupId,
+    });
     setSaving(false);
-    if (error) { toast.error("Could not add learner"); return; }
-    setSavedHandoverCode(data.handover_code);
+    if (membershipError) { toast.error("Could not add learner to this group"); return; }
+    setSavedHandoverCode(learner.handover_code);
     onReload();
   }
 
   async function removeLearner(learnerId: string) {
-    await supabase.from("class_learners").delete().eq("id", learnerId);
+    await supabase.from("learner_group_memberships").delete().eq("learner_id", learnerId).eq("group_id", selectedGroupId);
     setConfirmRemoveLearner(null);
     onReload();
   }
@@ -586,36 +588,33 @@ function RosterTab({
   return (
     <div className="space-y-4">
       <div className="flex gap-2 flex-wrap">
-        {visibleClasses.map((c) => {
-          const g = grades.find((x) => x.id === c.grade_id);
-          return (
-            <button
-              key={c.id}
-              onClick={() => setSelectedClassId(c.id)}
-              className={cn(
-                "px-3 py-1.5 rounded-xl text-xs font-bold border transition-colors",
-                selectedClassId === c.id ? "bg-school text-school-foreground border-school" : "bg-card border-border text-muted-foreground"
-              )}
-            >
-              {g ? `${g.name} · ${c.name}` : c.name}
-            </button>
-          );
-        })}
+        {flatVisible.map(({ group, depth }) => (
+          <button
+            key={group.id}
+            onClick={() => setSelectedGroupId(group.id)}
+            className={cn(
+              "px-3 py-1.5 rounded-xl text-xs font-bold border transition-colors",
+              selectedGroupId === group.id ? "bg-school text-school-foreground border-school" : "bg-card border-border text-muted-foreground"
+            )}
+          >
+            {"— ".repeat(depth)}{group.name}
+          </button>
+        ))}
       </div>
 
-      {selectedClass && (
+      {selectedGroup && (
         <button
-          onClick={() => onCopy(`${APP_URL}/join/${selectedClass.join_code}`, `roster-${selectedClass.id}`)}
+          onClick={() => onCopy(`${APP_URL}/join/${selectedGroup.join_code}`, `roster-${selectedGroup.id}`)}
           className="w-full flex items-center justify-between gap-2 px-4 py-2.5 rounded-xl bg-school/10 border border-school/20 text-sm"
         >
-          <span className="text-school font-semibold">Share with parents to self-link an existing child: <strong>{selectedClass.join_code}</strong></span>
-          {copiedCode === `roster-${selectedClass.id}` ? <Check size={15} className="text-school shrink-0" /> : <Copy size={15} className="text-school shrink-0" />}
+          <span className="text-school font-semibold">Share with parents to self-link an existing child: <strong>{selectedGroup.join_code}</strong></span>
+          {copiedCode === `roster-${selectedGroup.id}` ? <Check size={15} className="text-school shrink-0" /> : <Copy size={15} className="text-school shrink-0" />}
         </button>
       )}
 
       <div className="space-y-2">
         {learners.length === 0 ? (
-          <p className="text-sm text-muted-foreground text-center py-6">No learners in this class yet.</p>
+          <p className="text-sm text-muted-foreground text-center py-6">No learners in this group yet.</p>
         ) : (
           learners.map((l) => (
             <div key={l.id} className="flex items-center gap-3 p-3 bg-card border border-border rounded-2xl">

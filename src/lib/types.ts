@@ -440,9 +440,69 @@ export interface SchoolStaffInvite {
   school_id: string;
   role: SchoolRole;
   class_id: string | null;
+  group_id: string | null;
   code: string;
   invited_by: string | null;
   expires_at: string;
   accepted_at: string | null;
+  created_at: string;
+}
+
+// ── Schools v3 — arbitrary-depth groups (PRD §23.3 / §25) ───────────────────
+// Replaces the fixed grades→classes two-level structure above with a
+// self-referencing tree (school_groups.parent_id), so a school can nest
+// however deep it needs (e.g. Phase → Grade → Class, or just Grade → Class).
+// The old grades/classes/class_learners tables are left in place, unused,
+// rather than dropped (no real school data existed when this was built).
+
+export type SchoolGroupKind = "group" | "grade" | "class" | "phase";
+
+export interface SchoolGroup {
+  id: string;
+  school_id: string;
+  parent_id: string | null;
+  name: string;
+  kind: SchoolGroupKind | string;
+  order_index: number;
+  join_code: string;
+  created_at: string;
+  // client-side only, not a column — populated by get_group_path() for breadcrumbs
+  path?: string[];
+}
+
+export interface Learner {
+  id: string;
+  school_id: string;
+  family_member_id: string | null; // null until claimed (school-created) or always set (linked)
+  nickname: string;
+  avatar_emoji: string;
+  is_school_created: boolean;
+  handover_code: string | null;
+  handover_code_expires_at: string | null;
+  claimed_at: string | null;
+  added_by: string | null;
+  created_at: string;
+}
+
+export interface LearnerGroupMembership {
+  id: string;
+  learner_id: string;
+  group_id: string;
+  joined_at: string;
+}
+
+export interface SchoolTag {
+  id: string;
+  school_id: string;
+  name: string;
+  visible_to: string;
+  created_at: string;
+}
+
+export interface LearnerTag {
+  id: string;
+  learner_id: string;
+  tag_id: string;
+  added_by: string | null;
   created_at: string;
 }

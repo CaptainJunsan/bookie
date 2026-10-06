@@ -8,9 +8,9 @@ import { MEMBER_COLORS } from "../lib/types";
 import type { FamilyMember } from "../lib/types";
 import { toast } from "sonner";
 
-type ClassPreview = { class_id: string; class_name: string; grade_name: string; school_id: string; school_name: string };
-type HandoverPreview = { nickname: string; avatar_emoji: string; school_name: string; class_name: string };
-type StaffPreview = { school_name: string; role: string; class_name: string | null };
+type GroupPreview = { group_id: string; group_name: string; group_kind: string; school_id: string; school_name: string };
+type HandoverPreview = { nickname: string; avatar_emoji: string; school_name: string };
+type StaffPreview = { school_name: string; role: string; group_name: string | null };
 type SchoolClaimPreview = { school_name: string; applicant_name: string | null };
 
 type Mode = "loading" | "enter-code" | "invalid" | "account" | "class-join" | "handover" | "staff-invite" | "school-claim" | "done";
@@ -22,7 +22,7 @@ export default function JoinPage() {
 
   const [enteredCode, setEnteredCode] = useState("");
   const [mode, setMode] = useState<Mode>("loading");
-  const [classPreview, setClassPreview] = useState<ClassPreview | null>(null);
+  const [classPreview, setClassPreview] = useState<GroupPreview | null>(null);
   const [handoverPreview, setHandoverPreview] = useState<HandoverPreview | null>(null);
   const [staffPreview, setStaffPreview] = useState<StaffPreview | null>(null);
   const [schoolClaimPreview, setSchoolClaimPreview] = useState<SchoolClaimPreview | null>(null);
@@ -49,13 +49,13 @@ export default function JoinPage() {
     setMode("loading");
 
     const [classRes, handoverRes, staffRes, schoolClaimRes] = await Promise.all([
-      supabase.rpc("get_class_by_join_code", { p_code: code }),
-      supabase.rpc("get_handover_preview", { p_code: code }),
-      supabase.rpc("get_staff_invite_preview", { p_code: code }),
+      supabase.rpc("get_group_by_join_code", { p_code: code }),
+      supabase.rpc("get_learner_handover_preview", { p_code: code }),
+      supabase.rpc("get_staff_invite_preview_v2", { p_code: code }),
       supabase.rpc("get_school_claim_preview", { p_code: code }),
     ]);
 
-    const classRow = (classRes.data as ClassPreview[] | null)?.[0];
+    const classRow = (classRes.data as GroupPreview[] | null)?.[0];
     const handoverRow = (handoverRes.data as HandoverPreview[] | null)?.[0];
     const staffRow = (staffRes.data as StaffPreview[] | null)?.[0];
     const schoolClaimRow = (schoolClaimRes.data as SchoolClaimPreview[] | null)?.[0];
@@ -115,16 +115,28 @@ export default function JoinPage() {
     setBusy(true);
     const child = allMembers.find((m) => m.id === childId);
     try {
-      const { error } = await supabase.from("class_learners").insert({
-        class_id: classPreview.class_id,
-        school_id: classPreview.school_id,
-        family_member_id: childId,
-        nickname: child?.nickname ?? "Reader",
-        avatar_emoji: child?.avatar_emoji ?? "🧒",
-        is_school_created: false,
+      const { data: existingLearner } = await supabase
+        .from("learners").select("id").eq("school_id", classPreview.school_id).eq("family_member_id", childId).maybeSingle();
+
+      let learnerId = existingLearner?.id;
+      if (!learnerId) {
+        const { data: newLearner, error: learnerError } = await supabase.from("learners").insert({
+          school_id: classPreview.school_id,
+          family_member_id: childId,
+          nickname: child?.nickname ?? "Reader",
+          avatar_emoji: child?.avatar_emoji ?? "🧒",
+          is_school_created: false,
+          claimed_at: new Date().toISOString(),
+        }).select("id").single();
+        if (learnerError) throw learnerError;
+        learnerId = newLearner.id;
+      }
+
+      const { error } = await supabase.from("learner_group_memberships").insert({
+        learner_id: learnerId, group_id: classPreview.group_id,
       });
       if (error) throw error;
-      setDoneMessage(`${child?.nickname ?? "Your child"} is now in ${classPreview.grade_name} · ${classPreview.class_name} at ${classPreview.school_name}!`);
+      setDoneMessage(`${child?.nickname ?? "Your child"} is now in ${classPreview.group_name} at ${classPreview.school_name}!`);
       setMode("done");
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Could not link this profile");
@@ -155,7 +167,7 @@ export default function JoinPage() {
   async function claimHandover() {
     setBusy(true);
     try {
-      const { error } = await supabase.rpc("claim_class_learner", { p_handover_code: code });
+      const { error } = await supabase.rpc("claim_learner", { p_handover_code: code });
       if (error) throw error;
       await refreshFamily();
       setDoneMessage(`${handoverPreview?.nickname}'s profile is now part of your family! You can personalise it any time in Settings.`);
@@ -170,7 +182,7 @@ export default function JoinPage() {
   async function acceptStaffInvite() {
     setBusy(true);
     try {
-      const { data: schoolId, error } = await supabase.rpc("accept_staff_invite", { p_code: code });
+      const { data: schoolId, error } = await supabase.rpc("accept_staff_invite_v2", { p_code: code });
       if (error) throw error;
       toast.success(`You're now ${staffPreview?.role === "admin" ? "an admin" : "a teacher"} at ${staffPreview?.school_name}!`);
       navigate(`/schools/${schoolId}`);
@@ -265,7 +277,7 @@ export default function JoinPage() {
                 <div className="text-5xl mb-4">📚</div>
                 <h1 className="font-display text-3xl font-bold text-foreground">Sign in to continue</h1>
                 <p className="text-muted-foreground mt-2 text-sm">
-                  {classPreview && `You're joining ${classPreview.grade_name} · ${classPreview.class_name} at ${classPreview.school_name}.`}
+                  {classPreview && `You're joining ${classPreview.group_name} at ${classPreview.school_name}.`}
                   {handoverPreview && `You're claiming ${handoverPreview.nickname}'s profile from ${handoverPreview.school_name}.`}
                   {staffPreview && `You've been invited to join ${staffPreview.school_name}.`}
                   {schoolClaimPreview && `Your school, ${schoolClaimPreview.school_name}, has been approved.`}
@@ -302,7 +314,7 @@ export default function JoinPage() {
             <>
               <div className="text-center mb-8">
                 <div className="text-5xl mb-4">🎓</div>
-                <h1 className="font-display text-2xl font-bold text-foreground">Join {classPreview.grade_name} · {classPreview.class_name}</h1>
+                <h1 className="font-display text-2xl font-bold text-foreground">Join {classPreview.group_name}</h1>
                 <p className="text-muted-foreground mt-2 text-sm">{classPreview.school_name} — which of your children should join?</p>
               </div>
 
@@ -344,7 +356,7 @@ export default function JoinPage() {
                 <div className="text-5xl mb-4">{handoverPreview.avatar_emoji}</div>
                 <h1 className="font-display text-2xl font-bold text-foreground">Claim {handoverPreview.nickname}'s profile</h1>
                 <p className="text-muted-foreground mt-2 text-sm">
-                  From {handoverPreview.class_name} at {handoverPreview.school_name}. Their reading history moves with them, and you can personalise the profile any time in Settings.
+                  From {handoverPreview.school_name}. Their reading history moves with them, and you can personalise the profile any time in Settings.
                 </p>
               </div>
               <button onClick={claimHandover} disabled={busy}
@@ -361,7 +373,7 @@ export default function JoinPage() {
                 <h1 className="font-display text-2xl font-bold text-foreground">Join {staffPreview.school_name}</h1>
                 <p className="text-muted-foreground mt-2 text-sm">
                   You've been invited as {staffPreview.role === "admin" ? "an admin" : "a teacher"}
-                  {staffPreview.class_name ? `, teaching ${staffPreview.class_name}` : ""}.
+                  {staffPreview.group_name ? `, teaching ${staffPreview.group_name}` : ""}.
                 </p>
               </div>
               <button onClick={acceptStaffInvite} disabled={busy}
