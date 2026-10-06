@@ -105,12 +105,14 @@ export default function AuthPage() {
         if (error) throw error;
         userId = data.user.id;
       }
-      const { data: member } = await supabase
+      // A user may have more than one family_members row (multi-family
+      // membership, PRD §27) — .limit(1) just checks "at least one exists".
+      const { data: members } = await supabase
         .from("family_members")
         .select("id")
         .eq("user_id", userId)
-        .single();
-      navigate(member ? "/home" : "/onboarding");
+        .limit(1);
+      navigate(members && members.length > 0 ? "/home" : "/onboarding");
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Something went wrong");
     } finally {

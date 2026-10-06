@@ -135,9 +135,15 @@ export default function InvitePage() {
       } else {
         // Regular new-member join
         const familyId = invite.family_id;
-        const { data: existingMembers } = await supabase
-          .from("family_members").select("id").eq("family_id", familyId);
+        const [{ data: existingMembers }, { data: myOtherFamilies }] = await Promise.all([
+          supabase.from("family_members").select("id").eq("family_id", familyId),
+          // Multi-family membership (PRD §27): if this account already has a
+          // family elsewhere, this new row must NOT be is_primary (the
+          // one-primary-per-user unique index would reject a second true).
+          supabase.from("family_members").select("id").eq("user_id", currentUser.id).limit(1),
+        ]);
         const color = MEMBER_COLORS[(existingMembers?.length ?? 0) % MEMBER_COLORS.length];
+        const isPrimary = !myOtherFamilies || myOtherFamilies.length === 0;
 
         const { error: memberError } = await supabase.from("family_members").insert({
           family_id: familyId,
@@ -149,6 +155,7 @@ export default function InvitePage() {
           color,
           gender: genderFromRole(role) || null,
           language: detectLanguage(),
+          is_primary: isPrimary,
         });
         if (memberError) throw memberError;
 

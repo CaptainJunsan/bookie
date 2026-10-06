@@ -85,7 +85,16 @@ export default function OnboardingPage() {
         .insert({ id: familyId, name: familyName.trim(), created_by: user.id });
       if (fErr) throw fErr;
 
-      // 2. Create parent member
+      // 2. Create parent member. This route has no guard against a user who
+      // already has a family reaching onboarding again (multi-family
+      // membership, PRD §27, makes that a real path rather than a bug) — so
+      // check first rather than assuming is_primary's true default is safe;
+      // a second is_primary:true row for the same user would hit the
+      // one-primary-per-user unique index.
+      const { data: existingRows } = await supabase
+        .from("family_members").select("id").eq("user_id", user.id).limit(1);
+      const isPrimary = !existingRows || existingRows.length === 0;
+
       const parentColor = MEMBER_COLORS[0];
       const memberId = crypto.randomUUID();
       const { error: mErr } = await supabase
@@ -100,6 +109,7 @@ export default function OnboardingPage() {
           is_child: false,
           color: parentColor,
           language: detectLanguage(),
+          is_primary: isPrimary,
         });
       if (mErr) throw mErr;
       const parentMember = { id: memberId };

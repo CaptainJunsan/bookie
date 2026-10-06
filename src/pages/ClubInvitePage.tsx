@@ -63,14 +63,16 @@ export default function ClubInvitePage() {
       return;
     }
 
-    // User is authenticated — check if they have a family
+    // User is authenticated — check if they have a family. A user may have
+    // more than one family_members row (multi-family membership, PRD §27),
+    // so .limit(1) rather than .maybeSingle() (which errors on >1 row).
     const { data: fm } = await supabase
       .from("family_members")
       .select("id")
       .eq("user_id", user.id)
-      .maybeSingle();
+      .limit(1);
 
-    if (!fm) {
+    if (!fm || fm.length === 0) {
       // Authenticated but no family — needs profile creation
       setNeedsProfile(true);
       setStep("join");

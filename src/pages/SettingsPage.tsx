@@ -2,7 +2,7 @@ import { useRef, useState, useEffect } from "react";
 import { useNavigate } from "react-router";
 import {
   LogOut, Plus, Trash2, Copy, Check, UserPlus,
-  Pencil, X, ShieldCheck, KeyRound, Share2, Loader2, Heart, BarChart2,
+  Pencil, X, ShieldCheck, KeyRound, Share2, Loader2, Heart, BarChart2, Users, Star,
 } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../contexts/AuthContext";
@@ -19,9 +19,23 @@ import {
 } from "../lib/shareCard";
 
 export default function SettingsPage() {
-  const { user, member, family, allMembers, isAdmin, signOut, refreshFamily } = useAuth();
+  const { user, member, family, allMembers, myProfiles, isAdmin, signOut, refreshFamily, switchProfile } = useAuth();
   const navigate = useNavigate();
   const ageGroupRef = useRef<HTMLElement | null>(null);
+  const [switchingProfileId, setSwitchingProfileId] = useState<string | null>(null);
+
+  async function handleSwitchProfile(memberId: string) {
+    setSwitchingProfileId(memberId);
+    await switchProfile(memberId);
+    setSwitchingProfileId(null);
+  }
+
+  async function setPrimaryProfile(memberId: string) {
+    if (!user) return;
+    await supabase.from("family_members").update({ is_primary: false }).eq("user_id", user.id).eq("is_primary", true);
+    await supabase.from("family_members").update({ is_primary: true }).eq("id", memberId);
+    await refreshFamily();
+  }
 
   const isParent = member && !member.is_child;
 
@@ -442,6 +456,59 @@ export default function SettingsPage() {
           </div>
         )}
       </section>
+
+      {/* My Families — multi-family membership, PRD §27 */}
+      {myProfiles.length > 1 && (
+        <section className="bg-card border border-border rounded-2xl p-4 space-y-2">
+          <div className="flex items-center gap-2 mb-2">
+            <Users size={16} className="text-primary" />
+            <h2 className="font-display font-bold text-lg">My families</h2>
+          </div>
+          <p className="text-xs text-muted-foreground -mt-1 mb-2">
+            You're part of more than one family on Bookie. Switch to see that family's library and readers.
+          </p>
+          {myProfiles.map((p) => {
+            const isActive = p.id === member?.id;
+            return (
+              <div
+                key={p.id}
+                className={`flex items-center gap-3 p-2.5 rounded-xl border ${isActive ? "border-primary/40 bg-primary/5" : "border-border"}`}
+              >
+                <span className="text-2xl shrink-0">{p.avatar_emoji}</span>
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-sm truncate flex items-center gap-1.5">
+                    {p.family_name}
+                    {p.is_primary && <Star size={11} className="text-amber-500 fill-amber-500" />}
+                  </p>
+                  <p className="text-xs text-muted-foreground truncate">{p.nickname} · {p.role}</p>
+                </div>
+                {isActive ? (
+                  <span className="text-[10px] font-bold uppercase tracking-wide text-primary px-2 py-1 rounded-full bg-primary/10 shrink-0">Active</span>
+                ) : (
+                  <button
+                    onClick={() => handleSwitchProfile(p.id)}
+                    disabled={switchingProfileId === p.id}
+                    className="text-xs font-bold text-primary px-2.5 py-1.5 rounded-lg hover:bg-primary/10 transition-colors shrink-0 disabled:opacity-60"
+                  >
+                    {switchingProfileId === p.id ? <Loader2 size={13} className="animate-spin" /> : "Switch"}
+                  </button>
+                )}
+                {!p.is_primary && (
+                  <button
+                    onClick={() => setPrimaryProfile(p.id)}
+                    className="text-[11px] font-semibold text-muted-foreground hover:text-foreground shrink-0"
+                  >
+                    Set primary
+                  </button>
+                )}
+              </div>
+            );
+          })}
+          <p className="text-[11px] text-muted-foreground pt-1">
+            To join another family, ask one of its adults to send you an invite link from their Settings.
+          </p>
+        </section>
+      )}
 
       {/* Family */}
       <section className="bg-card border border-border rounded-2xl p-4 space-y-2">

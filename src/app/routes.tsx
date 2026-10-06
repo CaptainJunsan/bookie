@@ -35,12 +35,15 @@ async function requireAuth() {
 async function requireNoAuth() {
   const { data: { session } } = await supabase.auth.getSession();
   if (session) {
-    const { data: member } = await supabase
+    // A user may now have more than one family_members row (multi-family
+    // membership, PRD §27) — this only needs to know whether at least one
+    // exists, so .limit(1) instead of .single() (which errors on >1 row).
+    const { data: members } = await supabase
       .from("family_members")
       .select("id")
       .eq("user_id", session.user.id)
-      .single();
-    throw redirect(member ? "/home" : "/onboarding");
+      .limit(1);
+    throw redirect(members && members.length > 0 ? "/home" : "/onboarding");
   }
   return null;
 }
@@ -48,12 +51,12 @@ async function requireNoAuth() {
 async function requireAuthWithFamily() {
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) throw redirect("/auth");
-  const { data: member } = await supabase
+  const { data: members } = await supabase
     .from("family_members")
     .select("id")
     .eq("user_id", session.user.id)
-    .single();
-  if (!member) throw redirect("/onboarding");
+    .limit(1);
+  if (!members || members.length === 0) throw redirect("/onboarding");
   return null;
 }
 
@@ -65,9 +68,9 @@ export const router = createBrowserRouter([
       { index: true, Component: LandingPage, loader: async () => {
         const { data: { session } } = await supabase.auth.getSession();
         if (session) {
-          const { data: member } = await supabase
-            .from("family_members").select("id").eq("user_id", session.user.id).single();
-          if (member) throw redirect("/home");
+          const { data: members } = await supabase
+            .from("family_members").select("id").eq("user_id", session.user.id).limit(1);
+          if (members && members.length > 0) throw redirect("/home");
         }
         return null;
       }},

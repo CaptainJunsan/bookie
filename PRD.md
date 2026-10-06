@@ -993,11 +993,12 @@ All seven items were resolved by Janico on 2026-10-06 (§23.1) and merged into t
 
 **Done 2026-10-06** (§26, in addition to §24/§25 above): the Home/Dashboard split.
 
+**Done 2026-10-06** (§27): multi-family membership.
+
 **Still queued, in this order:**
 
-1. **Multi-family membership** (§23.2) — not yet scheduled into §17's build order; foundational enough (touches every page using `useAuth()`) that it likely belongs closer to Phase 0 than wherever it would naturally fall as a late addition. Needs its own sequencing pass through §17.
-2. **Payment integration** for the new subscription plans (§12.5) — provider still unchosen (§18 Q10); sequence after multi-family membership, since "primary family" needs to be a real concept first.
-3. **Schools consent-flow rebuild** (§10.3) — now unblocked by the structure landing in §25, but not yet started.
+1. **Payment integration** for the new subscription plans (§12.5) — provider still unchosen (§18 Q10); "primary family" is now a real concept (§27's `is_primary` column), so this is no longer blocked on anything but the provider decision.
+2. **Schools consent-flow rebuild** (§10.3) — now unblocked by the structure landing in §25, but not yet started.
 
 ### 23.4 Session log — decisions resolved, nav and typography (2026-10-06)
 
@@ -1061,3 +1062,27 @@ Built per §23.3 item 4 — the pill-button nav decision (§23.1.3) assumed a se
 
 - **No shared "primary family" or cross-family awareness** — this was a pure page split, not a data-model change. It doesn't touch or unblock multi-family membership (§23.2), which is still queued separately and is the bigger, riskier remaining item.
 - **Not browser-tested** — same standing limitation as every other UI change this session; verified via `npm run build` only.
+
+---
+
+## 27. Session log — multi-family membership (2026-10-06)
+
+Built per §23.2/§23.3 item 1 — the item the reconciliation itself flagged as "one of the biggest single changes... should be sequenced deliberately, not bundled in with smaller items." Unlike the Schools rebuild (§25), this touches **real production data and RLS**, so it was treated with more caution: the model to use was put to Janico as an explicit choice before any migration, rather than decided unilaterally.
+
+**Model chosen: separate profile per family, linked by account.** The same person gets a distinct `family_members` row in each family they join — same `user_id`, different `family_id` — each with its own nickname/avatar/role/reading history scoped to that family's books, exactly as a single-family profile always worked. A "My Families" switcher (Settings) picks which one is active. The alternative (one person-identity row, family membership fully decoupled into a join table) was explicitly offered and declined — it would have required an active-family session mechanism and a rewrite of every `.eq("family_id", ...)` query in the app, for a unified-reading-history benefit the "why" didn't ask for.
+
+**The schema already allowed this** — confirmed before writing any migration: there was no `UNIQUE` constraint on `family_members.user_id`, and `InvitePage.tsx`'s existing join flow already inserted a new row with the signed-in user's `user_id` with no check for "do they already have a family elsewhere." The only things actually blocking it were app code assuming one row per user (`AuthContext.tsx`'s `.single()` query) and RLS (`get_my_family_id()` picking one of several matching rows arbitrarily via `LIMIT 1`, which would have let a person's own RLS-granted visibility silently depend on row-insertion order rather than which family they were actually viewing). So this shipped as an **additive** migration, not a restructuring.
+
+**Schema** (`supabase/multi_family_membership_schema.sql`, applied to production `rnyatweedvzmeubqvjbo`): one new column, `family_members.is_primary boolean DEFAULT true` (backfills every existing row correctly for free — today every row is definitionally someone's only/primary family), plus a partial unique index (`WHERE is_primary = true`) enforcing one primary per `user_id` — NULLs (every child row) don't collide with each other in a unique index, so this only constrains real accounts. A new `get_my_family_ids()` function (plural counterpart to the existing `get_my_family_id()`, left in place unused per the established pattern) returns every family a user belongs to; **23 RLS policies across 7 tables** (`books`, `families`, `family_members`, `invites`, `ratings`, `reading_progress`, `reading_sessions`) were updated via `ALTER POLICY` — not `DROP`+`CREATE` — to check `= ANY (get_my_family_ids())` instead of `= get_my_family_id()`. This grants a person RLS visibility into all of their families at once; the app's own queries (always filtered to whichever family `AuthContext` currently holds as active) are what actually control what's shown at any moment.
+
+**New tooling note:** two of these migrations (`ALTER POLICY` on live tables) were blocked by Claude Code's own auto-mode permission classifier as "Modify Shared Resources," separately from anything Supabase-side — the first time that's come up this session, since every earlier migration was schema creation on tables with no prior policies. Resolved once Janico added a standing permission rule for the migration tool to his own `settings.json` (`permissions.allow`). Noting this here since it's an environment quirk specific to this session, not a Postgres or Supabase behaviour.
+
+**App code:** `AuthContext.tsx` rewritten to fetch *all* of a user's `family_members` rows (not `.single()`), exposing a new `myProfiles` list (each with its family's name joined in) and a `switchProfile(memberId)` function. The active profile is remembered per-user in `localStorage` (falls back to whichever row is `is_primary`, then the first row) so a switch persists across reloads without needing a server round-trip. Every other `.single()`/`.maybeSingle()` call site that queried `family_members` by `user_id` alone — `routes.tsx` (3 loaders), `AuthPage.tsx`, `ClubInvitePage.tsx` — was changed to `.limit(1)` + an existence check, since those calls error on >1 row rather than picking one. `InvitePage.tsx`'s regular-join branch and `OnboardingPage.tsx`'s family-creation step now explicitly check for an existing primary row before inserting, setting `is_primary: false` on a second family rather than relying on the column default and hitting the unique index as an error.
+
+**UI:** Settings gained a "My Families" section (`SettingsPage.tsx`), shown only when `myProfiles.length > 1` — zero visible change for the overwhelming majority of users who are still in exactly one family. Lists each profile with its family name, nickname/role, a primary-family star, a "Switch" button, and a "Set primary" action. No new UI was built for *starting* a second family from scratch — joining happens through the existing invite-link flow, which already worked for this once the `is_primary` bookkeeping was added; the section says so directly ("ask one of its adults to send you an invite link").
+
+**Deliberately not done this pass:**
+
+- **No "create a brand new second family" entry point** — a person joins additional families via an existing family's invite link, same mechanism as joining your first. Spinning up a second family from scratch (distinct from joining one) isn't exposed in the UI, though `OnboardingPage.tsx` was made safe against it (see above) since that route has no guard stopping an existing user from reaching it.
+- **No unified cross-family reading stats** — this was the explicit trade-off of the chosen model. A grandparent in two families sees two independent reading histories, one per profile, not a combined one. Revisit only if asked for specifically; the alternative model (declined above) would have been the way to get it.
+- **Not browser-tested** — same standing limitation as every other change this session; verified via `npm run build` and direct SQL inspection of the applied policies (`pg_policies`, confirmed zero remaining references to the old singular function), not a click-through.

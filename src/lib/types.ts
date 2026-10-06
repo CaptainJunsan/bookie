@@ -27,6 +27,10 @@ export interface FamilyMember {
   gender: string | null;
   age_group: string | null;
   created_at: string;
+  // Multi-family membership (PRD §27) — which of this user's family_members
+  // rows is their default/billing family. Exactly one per user_id (enforced
+  // by a partial unique index); meaningless for child rows (user_id null).
+  is_primary: boolean;
 }
 
 // ── PRD v0.3 age group bands (§2.2) ──────────────────────────────────────────
